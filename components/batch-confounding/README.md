@@ -16,6 +16,7 @@ python3 ../batch-label-schedules/demo_dataset.py --out demo-data
 python3 ../batch-label-schedules/batch_schedule_cli.py generate --dataset-json demo-data/dataset.json --matrix-npz demo-data/dataset.npz --seed 20261029 --draws 32 --out demo-schedule.json
 python3 batch_confounding_cli.py --dataset-json demo-data/dataset.json --matrix-npz demo-data/dataset.npz --schedule demo-schedule.json --out diagnostic-output
 PYTHONPATH=../batch-label-schedules python3 independent_confounding_receiver.py
+PYTHONPATH=../batch-label-schedules python3 independent_dataset_identity_receiver.py
 ```
 
 Open `diagnostic-output/REPORT.md`. The synthetic six-sample fixture has descriptive AUC **13/18**, six conditional label assignments, one frozen label and maximum Hamming change four. Those are mechanical fixture properties, not scientific evidence.
@@ -82,7 +83,18 @@ Subject IDs, if supplied, expose repeated IDs, represented batches and conflicti
 
 `describe_batch_confounding(dataset, outcomes=None, max_schedule_cells=2000000)` returns a JSON-compatible report. `check_schedule_invariance(dataset, report, schedule, outcomes=None, strict_replay=True, max_schedule_cells=2000000)` regenerates and strictly compares the full report, validates the schedule, and checks the fixed-score metrics. These parameters after `dataset` (and after the three positional checker arguments) are keyword-only.
 
-Direct imports require both component directories on `sys.path`; the CLI locates its sibling automatically. Input validation and dataset binding use the maintained schedule component's public zero-draw generation and validation APIs. The diagnostic does not duplicate its validation rules or fit a nuisance predictor.
+Direct imports require both component directories on `sys.path`; the CLI locates its sibling automatically. Input validation and dataset binding use the maintained schedule component's
+public `validate_dataset_identity` API. It returns `binding` and
+`ordered_metadata`, applies the same dataset rules and zero-draw baseline cell
+budget (`2*n_samples`), and creates no temporary schedule. The diagnostic does
+not duplicate dataset validation rules or fit a nuisance predictor.
+
+This separates descriptive reporting from serialization of a schedule's exact
+combinatorial support. Schedule generation remains subject to the existing
+runtime integer-to-decimal limit: a balanced single batch of 20,000 samples
+exceeds Python 3.12's default 4,300-digit guard, even with zero draws. Supplying a schedule
+still requires a valid schedule artifact; this change does not alter schedule
+v1, bypass its limits or modify the process-wide guard.
 
 ## Output bundle and provenance
 
@@ -99,6 +111,28 @@ Input files are not copied into the output bundle. Retain them separately for re
 The schedule file SHA-256 and the schedule's internal integrity digest identify different representations. Both are retained in their respective fields. Hashes provide consistency checks, not authenticated authorship.
 
 ## Actual receiving evidence
+
+### Dataset-identity regression receiving
+
+The dataset-identity patch was executed on Linux, Python 3.12.3 and NumPy 2.5.4
+with the default 4,300-digit integer guard unchanged. The existing 64 schedule
+checks and 21 diagnostic checks passed, together with four new named receiver
+checks. The new receiver covers 10,000- and 20,000-row balanced batches,
+independently reconstructed input identities, 14 malformed datasets, six
+rejected budgets, an exact baseline budget and detached returned metadata.
+
+An actual CLI comparison reproduced the old 20,000-row failure and received
+the corrected report: AUC 1/2, 100,000,000 tied positive-negative pairs and
+batch/target ranks 1 and 2. Invalid input created no output; an existing output
+directory and original input files remained unchanged. The small demonstration's
+32-draw schedule, report and invariance JSON were byte-identical to the previous
+implementation, including strict RNG replay. Large-support schedule generation
+still reached its documented serialization limit; it was not relabeled a pass.
+
+The new receiver is a source-level regression entry point. Any release-download
+receiving is attributed separately to the actual published commit and asset.
+
+### Earlier component receiving
 
 The independent receiver passed **21 named checks**, including **150 exhaustive index permutations across nine small fixtures**. Its row-pair Fraction oracle and NumPy design ranks are independent of the component's grouped score and exact rank formulas. It covers equal-score ties, unequal group sizes, pure/mixed/one-class cases, missing outcomes, repeated subjects, malformed report fields and changed input/schedule bindings.
 

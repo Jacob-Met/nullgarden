@@ -46,6 +46,24 @@ The SHA-256 integrity field is unkeyed. It detects changes against a retained di
 
 Seeds are non-Boolean integers from 0 through 2**128-1. At most 100000 draws are accepted. The default configurable cell budget is 2000000, counting `2*n_samples*(draws+1)` for permutation and label entries, including the baseline. This is not a total-memory bound. The CLI additionally bounds metadata, NPZ allocation and serialized schedules; see its constants for limits.
 
+## Dataset identity without a schedule
+
+`validate_dataset_identity(dataset, *, max_schedule_cells=2000000)` validates the
+same dataset rules as schedule creation and returns a fresh dictionary containing
+`binding` and `ordered_metadata`. These preserve the canonical matrix and ordered
+metadata identity used by schedules; returned dictionaries do not retain input
+list or matrix-storage references. The function applies the zero-draw baseline
+cell budget, `2*n_samples`, so the supplied budget must still admit the dataset.
+It creates no schedule and makes no scientific-validity claim.
+
+This boundary lets descriptive consumers validate and bind a dataset without
+serializing a temporary schedule's exact combinatorial support. Schedule v1
+schema and outputs remain unchanged. Large exact support values can still exceed
+the runtime's integer-to-decimal serialization limit: a single balanced batch of
+20,000 samples triggers Python 3.12's 4,300-digit guard when constructing a
+schedule, including a zero-draw schedule. Dataset identity validation does not
+remove that separate schedule limitation or change the process-wide guard.
+
 ## Scientific conditions
 
 Within-batch exchangeability and subject independence remain unverified. This component does not permute subject blocks or handle temporal dependence. Missing subject metadata does not establish independence.
