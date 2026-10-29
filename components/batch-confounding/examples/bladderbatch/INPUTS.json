@@ -1,0 +1,61 @@
+{
+  "dataset_binding": {
+    "dataset_sha256": "0d6b58d3952f68a12667e8c0eb06cb9ce92e1f8891021044d5546c9413c4afcf",
+    "matrix_convention": "<f8 C",
+    "matrix_sha256": "0c9945e6acc19d8fc24d29d8e91b920dc8803def02c115bdecd2a380fdec3581",
+    "ordered_metadata_sha256": "2e50ab7dd8a1cd0f53836f86463a71424e9ba5b1ef82db0a2c93fbfcab24c208",
+    "shape": [
+      57,
+      22283
+    ]
+  },
+  "diagnostic_input_sha256": "a65187d0eaca0cbb9595fdef355fa886beca66a337053a5af07668ec79c5bb10",
+  "format": "nullgarden.batch-diagnostic-inputs.v1",
+  "inputs": {
+    "matrix": {
+      "bytes": 9386250,
+      "name": "bladderbatch.npz",
+      "sha256": "4d88377dd87e0044b573798337641db975ae05d1769c37308225a30698a414fa"
+    },
+    "metadata": {
+      "bytes": 407651,
+      "name": "bladderbatch.json",
+      "sha256": "fc8946911bf92accfbecc379cbb576ab3b3bc68f9fbf888e074e06668465eafe"
+    },
+    "schedule": {
+      "bytes": 333378,
+      "name": "bladderbatch-schedule.json",
+      "sha256": "d12ee1e6091f10ea4bbd2408d0d48591e3d5e72f70bd76f5a87e59f8eba8a269"
+    }
+  },
+  "outcome_path": "source_metadata.outcome",
+  "runtime": {
+    "numpy": "2.5.4",
+    "platform": "linux",
+    "python": "3.12.3"
+  },
+  "scientific_assumptions": "unverified",
+  "snapshot_semantics": "Hashes cover bounded regular-file snapshots actually parsed. Inputs are captured separately and their compatibility is checked by the loader. The CLI does not write to original input files.",
+  "source_files": {
+    "batch_confounding.py": {
+      "bytes": 9798,
+      "sha256": "5ced6cb6ffd15052b8183c8ee3f6eeed3d144e765754e89deed1c68ccd64e07c"
+    },
+    "batch_confounding_cli.py": {
+      "bytes": 8177,
+      "sha256": "621e09bfbd7fde8e52cc8dfcc0c1a0e7a101a537f8a96f342726a640a1350d2e"
+    },
+    "batch_label_schedule.py": {
+      "bytes": 15750,
+      "sha256": "db30cc8e914b173566963c0edaa7307e9de477ffea5b47febbaf42cdcaf082c6"
+    },
+    "batch_schedule_cli.py": {
+      "bytes": 8133,
+      "sha256": "32053fbf1a26acb6552425756cea17abe2402af825015ce57ffce676dbe61762"
+    },
+    "diagnostic_report.py": {
+      "bytes": 8707,
+      "sha256": "4c4dd53eb840c37cadb8bdbf8c092f17c7dc721bf2e88e2adcc0089867607643"
+    }
+  }
+}
