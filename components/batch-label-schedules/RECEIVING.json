@@ -1,0 +1,202 @@
+{
+  "format": "nullgarden.batch-label-schedules.receiving.v1",
+  "executor": "estate-c70eecd4-lead",
+  "independent_workers": [
+    "estate-c70eecd4-consumer",
+    "estate-c70eecd4-coordination",
+    "estate-c70eecd4-pool"
+  ],
+  "runtime": {
+    "os": "Linux",
+    "python": "3.12.3",
+    "numpy": "2.5.4"
+  },
+  "source_files": {
+    "batch_label_schedule.py": {
+      "bytes": 15750,
+      "sha256": "db30cc8e914b173566963c0edaa7307e9de477ffea5b47febbaf42cdcaf082c6"
+    },
+    "batch_schedule_cli.py": {
+      "bytes": 8133,
+      "sha256": "32053fbf1a26acb6552425756cea17abe2402af825015ce57ffce676dbe61762"
+    },
+    "independent_schedule_receiver.py": {
+      "bytes": 11147,
+      "sha256": "a9d02b417b92291f099a478bae258ba344ccc8d7bdef0a8b37c34358575f6209"
+    },
+    "demo_dataset.py": {
+      "bytes": 1725,
+      "sha256": "26d6e1c405fca294f38f5de5185173b97387c0fd3f1aa9bdf0dd235705a35236"
+    },
+    "README.md": {
+      "bytes": 6865,
+      "sha256": "f97b290c9c708f9b7e41e3acd7be4f9fae95a54693de9d4fc68ec1ccab7c9b0e"
+    },
+    "requirements-tested.txt": {
+      "bytes": 13,
+      "sha256": "738071c1d9633f276433ad6738de256d2bf0d22f66dc4bd3179012bebb63bdd1"
+    }
+  },
+  "module_receiver": {
+    "cases": 64,
+    "passed": true,
+    "receiver_sha256": "a9d02b417b92291f099a478bae258ba344ccc8d7bdef0a8b37c34358575f6209",
+    "result_sha256": "0f5b061cb660ea58e4ffc19ebc03b0cf29fa12f2ff7ae56d0ae3f77fc66d00cc",
+    "initial_failed_cases": [
+      "Boolean ordered labels",
+      "Boolean frozen count",
+      "Boolean summary count"
+    ],
+    "initial_module_sha256": "ad01822e5e30848861c3e0691f1284292aaa46ef3c4d9e5362c9c0f4a89cad3a"
+  },
+  "cli": {
+    "cases": [
+      {
+        "case": "generate",
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "strict-replay",
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "no-overwrite",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "boolean-metadata",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "changed-seed-strict",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "changed-seed-structural",
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "wrong-matrix-hash",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "duplicate-metadata",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "duplicate-nested-schedule",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "nonfinite-schedule",
+        "exit_code": 2,
+        "passed": true
+      },
+      {
+        "case": "module-to-cli",
+        "exit_code": 0,
+        "passed": true
+      }
+    ],
+    "summary_sha256": "ed57637cc59d66a325e692a4b7a95f961e7a6c2f7ba75a4d39c8b8691103fe84",
+    "public_schedule_sha256": "d12ee1e6091f10ea4bbd2408d0d48591e3d5e72f70bd76f5a87e59f8eba8a269",
+    "no_overwrite_verified": true,
+    "generation_unchanged_by_fix": true
+  },
+  "fresh_candidate_package": {
+    "sha256": "66cf82d0538c3c81ce1e7b8557f04126fffca5261ddd55b7106559d326eca4bc",
+    "bytes": 16379,
+    "cases": [
+      {
+        "case": "demo",
+        "args": [
+          "demo_dataset.py",
+          "--out",
+          "demo-data"
+        ],
+        "expected_exit": 0,
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "generate",
+        "args": [
+          "batch_schedule_cli.py",
+          "generate",
+          "--dataset-json",
+          "demo-data/dataset.json",
+          "--matrix-npz",
+          "demo-data/dataset.npz",
+          "--seed",
+          "20261029",
+          "--draws",
+          "32",
+          "--out",
+          "demo-schedule.json"
+        ],
+        "expected_exit": 0,
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "validate",
+        "args": [
+          "batch_schedule_cli.py",
+          "validate",
+          "--dataset-json",
+          "demo-data/dataset.json",
+          "--matrix-npz",
+          "demo-data/dataset.npz",
+          "--schedule",
+          "demo-schedule.json"
+        ],
+        "expected_exit": 0,
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "independent-receiver",
+        "args": [
+          "independent_schedule_receiver.py"
+        ],
+        "expected_exit": 0,
+        "exit_code": 0,
+        "passed": true
+      },
+      {
+        "case": "existing-demo-refused",
+        "args": [
+          "demo_dataset.py",
+          "--out",
+          "demo-data"
+        ],
+        "expected_exit": 1,
+        "exit_code": 1,
+        "passed": true
+      }
+    ],
+    "existing_demo_preserved": true,
+    "scope": "local candidate extraction; published download requires separate receiving"
+  },
+  "archive": {
+    "source_url": "estate:nullgarden:source-recovery-and-receiving:c70eecd4:20261029-v2",
+    "sha256": "322a2ffa812dd4de2280768fde125d28dc42093ca2e22cf1416de84059724966",
+    "bytes": 1571756,
+    "files": 115
+  },
+  "limitations": [
+    "No scientific exchangeability, subject independence or clinical validity is established.",
+    "No production engine/server/UI integration or NVIDIA/Nebius contribution is established.",
+    "Unkeyed digest is not authenticated authorship.",
+    "Only stated runtime and receiving paths are qualified."
+  ]
+}

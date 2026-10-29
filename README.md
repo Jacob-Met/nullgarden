@@ -10,4 +10,8 @@ The original sixteen-file uncommitted source was recovered and preserved unchang
 
 Team `estate-c70eecd4` is contributing a separately reviewed, standalone batch-label schedule module and CLI under task `nullgarden-batch-label-schedules-c70eecd4`. See the [integration record](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6490413631). It does not complete or replace the missing primary engine/server/UI.
 
+## Standalone experimental component
+
+[Batch-label schedules](components/batch-label-schedules/README.md) provides a runnable Python module and CLI, a self-contained synthetic example, and an independent receiver. Read that component's prerequisites and scientific limitations before use. It generates label schedules and verifies replay; it does not fit models or implement the complete application.
+
 The project remains experimental. No live NVIDIA/Nebius qualification, public release, clinical validity or complete application delivery is established by this source checkpoint.
