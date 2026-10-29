@@ -1,0 +1,18 @@
+{
+  "INPUTS.json": {
+    "bytes": 2191,
+    "sha256": "07ac3413f937c8eccb063eeacdda3f763332b0a2ddee5c3691dde113fda93eb1"
+  },
+  "REPORT.md": {
+    "bytes": 5022,
+    "sha256": "55953431ba830a26877c6ac73dbc289afb43c4482695a9f0fa78c3e4af7ea2e1"
+  },
+  "invariance.json": {
+    "bytes": 996,
+    "sha256": "cfff6f9ecd923b69040745f2d6ea6b57d623723e023cba52e09c89d0bab870d1"
+  },
+  "report.json": {
+    "bytes": 5856,
+    "sha256": "c2aa6897938f4d321e62ffec7443e91b33663921ab2c91e6f30848c357621b53"
+  }
+}

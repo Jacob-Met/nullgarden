@@ -1,0 +1,583 @@
+{
+  "actor": "estate-c70eecd4-lead",
+  "adapter_files": [
+    {
+      "bytes": 8177,
+      "name": "batch_confounding_cli.py",
+      "sha256": "621e09bfbd7fde8e52cc8dfcc0c1a0e7a101a537f8a96f342726a640a1350d2e"
+    },
+    {
+      "bytes": 8707,
+      "name": "diagnostic_report.py",
+      "sha256": "4c4dd53eb840c37cadb8bdbf8c092f17c7dc721bf2e88e2adcc0089867607643"
+    }
+  ],
+  "cli_course": {
+    "absence_vs_null_outcomes_distinct": true,
+    "case_count": 20,
+    "cases": [
+      {
+        "args": [
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-label-schedules/demo_dataset.py",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data"
+        ],
+        "case": "fixture-create",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "699fb8fd966ba2879c25fd5f30bc01b059cd8903a0c6d9d60d3a2fc09ccc896b"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/without-schedule-bundle"
+        ],
+        "case": "without-schedule",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "2dd69fb07f88236f1274155be1bcab72ddfe0b6ee7463b7e2beb7e320bf8f6dd"
+      },
+      {
+        "args": [
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-label-schedules/batch_schedule_cli.py",
+          "generate",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--seed",
+          "20261029",
+          "--draws",
+          "32",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-schedule.json"
+        ],
+        "case": "fixture-schedule",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "86bbd3e0e5fd4823f7ea4eb8de0cc663db879ffd50dcabad97f913a7584e8136",
+        "stdout_sha256": "99b59abdb9d122276570d78e8af8227b24a6794ce2c906e4116bd05756391a30"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--schedule",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-schedule.json",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/strict-schedule-bundle"
+        ],
+        "case": "strict-schedule",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "5c14dd069044a9ddcd9c15aa219a0395cea6f8064996bf2c4eae6f0ec9e9aebf"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/without-schedule-bundle"
+        ],
+        "case": "existing-output-refused",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "6e34cb57ab8770c8edf346b98d59d2e975a47b6aa79d2d6dbd9c4c122eaec743",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/all-null-outcomes.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--outcome-path",
+          "source_metadata.outcome",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/all-null-outcomes-bundle"
+        ],
+        "case": "all-null-outcomes",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "0f1cc471965e880a11349558c7be6f9b5ac30d1ccd062b36bcc99089b006f690"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--outcome-path",
+          "source_metadata.absent",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/missing-outcome-path-bundle"
+        ],
+        "case": "missing-outcome-path",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "14d1938e236ab074e80e928275735c0250852db6ae228df5e689ea09967881ea",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/null-outcome-field.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--outcome-path",
+          "source_metadata.outcome",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/null-outcome-field-bundle"
+        ],
+        "case": "null-outcome-field",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "70358c1eea9c797881d63d021efbe44c6352d24c412406c04159f13a40edba8b",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/misaligned-outcomes.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--outcome-path",
+          "source_metadata.outcome",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/misaligned-outcomes-bundle"
+        ],
+        "case": "misaligned-outcomes",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "3d037f2c9398004740ff99bb989c0e2c5a181ceb71c23a1d9acf9e0551e89fca",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/all-null-outcomes.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--outcome-path",
+          "source_metadata..outcome",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/empty-outcome-path-part-bundle"
+        ],
+        "case": "empty-outcome-path-part",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "2e2f1e9df41b197ea25b044d8acdc7d14e8c23566673dfe2952bcdf100e012f8",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--structural-only",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/structural-without-schedule-bundle"
+        ],
+        "case": "structural-without-schedule",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "50e9ccfa590df8869acc3a5bef2f7e46108e006fe5cfee919212a4f56eb50c80",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--schedule",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/changed-seed.json",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/changed-seed-strict-bundle"
+        ],
+        "case": "changed-seed-strict",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "1fde9438d40afb3eb8f8b060f5a113336384699f41ad9c9e74bf001318abac55",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--schedule",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/changed-seed.json",
+          "--structural-only",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/explicit-structural-only-bundle"
+        ],
+        "case": "explicit-structural-only",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "e685bf1e8bf60bf46652cac0655a1e3aacf9adce40c78193f0b42cf32e09b91a"
+      },
+      {
+        "args": [
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-label-schedules/batch_schedule_cli.py",
+          "generate",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--seed",
+          "1",
+          "--draws",
+          "0",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/empty-schedule.json"
+        ],
+        "case": "fixture-zero-draws",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "86bbd3e0e5fd4823f7ea4eb8de0cc663db879ffd50dcabad97f913a7584e8136",
+        "stdout_sha256": "2a32435b1db90d9a8136ec394703f987f0043dc6d1a7e3647902e6ab686de695"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--schedule",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/empty-schedule.json",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/zero-draws-bundle"
+        ],
+        "case": "zero-draws",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "ccd33b78b8a2a24bd772cbc330195764353caaab97213e785a2d3a799d4b2c8d"
+      },
+      {
+        "args": [
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-label-schedules/batch_schedule_cli.py",
+          "generate",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/one-class.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--seed",
+          "1",
+          "--draws",
+          "8",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/one-class-schedule.json"
+        ],
+        "case": "fixture-one-class-schedule",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "86bbd3e0e5fd4823f7ea4eb8de0cc663db879ffd50dcabad97f913a7584e8136",
+        "stdout_sha256": "0d9ee0b062024a39a3a658291122155117421b432f7d52151bc60250d15252a2"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/one-class.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--schedule",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/one-class-schedule.json",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/one-class-bundle"
+        ],
+        "case": "one-class",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "643e2bdca67fb3c869548a6acd057cf6d05187e4e5c450aad8db8ea29d2179d8"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/broken-metadata.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/broken.npz",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/malformed-verified-npz-bundle"
+        ],
+        "case": "malformed-verified-npz",
+        "exit_code": 2,
+        "expected_exit": 2,
+        "passed": true,
+        "stderr_sha256": "b0a509e169ef409cfa1918d2a2ebfd65057b350960c13f088e81d8a1cbd17bc1",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "args": [
+          "batch_confounding_cli.py",
+          "--dataset-json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/format-metadata.json",
+          "--matrix-npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "--outcome-path",
+          "source_metadata.outcome",
+          "--out",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/literal-metadata-format-bundle"
+        ],
+        "case": "literal-metadata-format",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "d0cd7600b84d594c04921bf419b72e34b22c861a872ed17847438ab411fe90c7"
+      },
+      {
+        "args": [
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/snapshot-hook.py",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/snapshot-metadata.json",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/demo-data/dataset.npz",
+          "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-cli-v1/snapshot-bundle",
+          "3bebf3e1845dec7bf63f1c0a08d98cd3cb6272b302044f6cada4a23183107e8e"
+        ],
+        "case": "source-change-after-snapshot",
+        "exit_code": 0,
+        "expected_exit": 0,
+        "passed": true,
+        "stderr_sha256": "8f142cb583ac293a72e0c21cc580d1bebbd7963a0aafd7b88b882e38051546a6",
+        "stdout_sha256": "6224ae179ee761f41f3548e5a40fa977c8dec8e1bc3d995facc63be5ebd75322"
+      }
+    ],
+    "exact_captured_snapshot_used_after_original_changed": true,
+    "existing_bundle_preserved": true,
+    "finished_at": "2026-10-29T07:55:04.699751+00:00",
+    "format_table_structure_preserved": true,
+    "invalid_input_created_no_output": true,
+    "passed": true,
+    "raw_metadata_values_preserved_in_json": true,
+    "schedule_file_and_internal_digest_distinct_fields": true,
+    "scope": "actual CLI processes and one isolated test-only snapshot interception, no production hook added",
+    "source_unchanged": true,
+    "steps_description": "20 steps: 15 diagnostic CLI processes, four fixture preparations, one isolated test-only snapshot interception; not twenty independent diagnostic tests",
+    "strict_vs_structural_replay_distinct": true,
+    "zero_and_single_class_not_false_passes": true
+  },
+  "complete_archive_source_url": "estate:nullgarden:batch-diagnostic-qualified:c70eecd4:20261029-v1",
+  "dependency": {
+    "archive_sha256": "c6574bf71006951c103695f528336046f8d30b1256a6425aef3f75264421a4fc",
+    "commit": "3474059e8f1076cb0ccf5bf0500edf972445dfb1",
+    "module_sha256": "db30cc8e914b173566963c0edaa7307e9de477ffea5b47febbaf42cdcaf082c6",
+    "release": "https://github.com/Jacob-Met/nullgarden/releases/tag/batch-label-schedules-v0.1.0-preview.20261029.1"
+  },
+  "format": "nullgarden.batch-confounding.receiving.v1",
+  "independent_receiver": {
+    "case_count": 21,
+    "exhaustive_index_permutations": 150,
+    "exit_code": 0,
+    "failed": [],
+    "finished_at": "2026-10-29T07:49:51.191760+00:00",
+    "module_sha256": "5ced6cb6ffd15052b8183c8ee3f6eeed3d144e765754e89deed1c68ccd64e07c",
+    "passed": true,
+    "receiver_sha256": "5879fa8e044ed59d7f575ab35f37ff33b55501388c455f53e71fa42c80295d9d",
+    "result_bytes": 2936,
+    "result_sha256": "a1ba1b0310c972d2834d1a599ac8d6020d60bd9845b7a106d416932ff92ad856",
+    "stderr_bytes": 0
+  },
+  "module": {
+    "bytes": 9798,
+    "dependency_release_sha256": "c6574bf71006951c103695f528336046f8d30b1256a6425aef3f75264421a4fc",
+    "file": "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-confounding/batch_confounding.py",
+    "root": "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1",
+    "sha256": "5ced6cb6ffd15052b8183c8ee3f6eeed3d144e765754e89deed1c68ccd64e07c",
+    "syntax_checked": true
+  },
+  "primary_owner": "estate-557346a0/root",
+  "prior_component_delivery_source_sha256": "93f36a2f723c22f0981a263b838d12dcc67a272a50ee0ba43ed6889fe2531fad",
+  "public_reference": {
+    "auc_fraction": {
+      "denominator": 340,
+      "numerator": 283
+    },
+    "basis": "Independent pre-execution hand derivation by retained coordination worker from already received batch counts, cross-checked by root",
+    "batch_plus_target_rank": 6,
+    "batch_rank": 5,
+    "losses": 56,
+    "mixed_negative": 8,
+    "mixed_positive": 29,
+    "mixed_samples": 37,
+    "pairs": 680,
+    "scope": "descriptive in-sample batch prevalence only",
+    "ties": 116,
+    "wins": 508,
+    "within_batch_pairs": 116
+  },
+  "public_run": {
+    "all_rows_and_outcomes_retained": true,
+    "args": [
+      "/home/ubuntu/hamon-work/estate-557346a0/nullgarden/.data-venv/bin/python",
+      "batch_confounding_cli.py",
+      "--dataset-json",
+      "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/execution/data/bladderbatch.json",
+      "--matrix-npz",
+      "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/execution/data/bladderbatch.npz",
+      "--outcome-path",
+      "source_metadata.outcome",
+      "--schedule",
+      "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/cli-receiving-v1/bladderbatch-schedule.json",
+      "--out",
+      "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-public-v1/report-bundle"
+    ],
+    "auc": {
+      "auc_decimal": 0.8323529411764706,
+      "auc_fraction": {
+        "denominator": 340,
+        "numerator": 283
+      },
+      "losses": 56,
+      "pairs": 680,
+      "status": "defined",
+      "ties": 116,
+      "wins": 508
+    },
+    "bundle": "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/receiving/diagnostic-public-v1/report-bundle",
+    "cwd": "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-confounding",
+    "design": {
+      "batch_plus_target_rank": 6,
+      "batch_rank": 5,
+      "target_in_batch_indicator_span": false
+    },
+    "diagnostic_input_sha256": "a65187d0eaca0cbb9595fdef355fa886beca66a337053a5af07668ec79c5bb10",
+    "draws_checked": 100,
+    "exact_independent_reference_match": true,
+    "exit_code": 0,
+    "finished_at": "2026-10-29T07:50:57.094584+00:00",
+    "input_snapshots": {
+      "matrix": {
+        "bytes": 9386250,
+        "name": "bladderbatch.npz",
+        "sha256": "4d88377dd87e0044b573798337641db975ae05d1769c37308225a30698a414fa"
+      },
+      "metadata": {
+        "bytes": 407651,
+        "name": "bladderbatch.json",
+        "sha256": "fc8946911bf92accfbecc379cbb576ab3b3bc68f9fbf888e074e06668465eafe"
+      },
+      "schedule": {
+        "bytes": 333378,
+        "name": "bladderbatch-schedule.json",
+        "sha256": "d12ee1e6091f10ea4bbd2408d0d48591e3d5e72f70bd76f5a87e59f8eba8a269"
+      }
+    },
+    "markdown_sha256": "55953431ba830a26877c6ac73dbc289afb43c4482695a9f0fa78c3e4af7ea2e1",
+    "outcome_categories": {
+      "Biopsy": 9,
+      "Normal": 8,
+      "mTCC": 12,
+      "sTCC+CIS": 12,
+      "sTCC-CIS": 16
+    },
+    "passed": true,
+    "report_sha256": "c2aa6897938f4d321e62ffec7443e91b33663921ab2c91e6f30848c357621b53",
+    "rng_replay": "verified",
+    "runtime": {
+      "numpy": "2.5.4",
+      "platform": "linux",
+      "python": "3.12.3"
+    },
+    "schedule_status": "verified",
+    "source_files": {
+      "batch_confounding.py": {
+        "bytes": 9798,
+        "sha256": "5ced6cb6ffd15052b8183c8ee3f6eeed3d144e765754e89deed1c68ccd64e07c"
+      },
+      "batch_confounding_cli.py": {
+        "bytes": 8177,
+        "sha256": "621e09bfbd7fde8e52cc8dfcc0c1a0e7a101a537f8a96f342726a640a1350d2e"
+      },
+      "batch_label_schedule.py": {
+        "bytes": 15750,
+        "sha256": "db30cc8e914b173566963c0edaa7307e9de477ffea5b47febbaf42cdcaf082c6"
+      },
+      "batch_schedule_cli.py": {
+        "bytes": 8133,
+        "sha256": "32053fbf1a26acb6552425756cea17abe2402af825015ce57ffce676dbe61762"
+      },
+      "diagnostic_report.py": {
+        "bytes": 8707,
+        "sha256": "4c4dd53eb840c37cadb8bdbf8c092f17c7dc721bf2e88e2adcc0089867607643"
+      }
+    },
+    "source_unchanged": true,
+    "stderr": "In-sample description only. Within-batch invariance does not establish scientific validity.\n",
+    "totals": {
+      "mixed_batches": [
+        "2",
+        "5"
+      ],
+      "mixed_negative": 8,
+      "mixed_positive": 29,
+      "mixed_samples": 37,
+      "n": 57,
+      "negative": 17,
+      "positive": 40,
+      "pure_batches": [
+        "3",
+        "1",
+        "4"
+      ],
+      "within_batch_positive_negative_pairs": 116
+    }
+  },
+  "publication_boundary": "Source/CLI qualification. Actual committed source and published-package download receiving must be attributed separately by exact commit and asset.",
+  "receiver": {
+    "bytes": 12883,
+    "path": "/home/ubuntu/hamon-work/estate-c70eecd4/nullgarden-recovery-20261029/diagnostic-v1/components/batch-confounding/independent_confounding_receiver.py",
+    "sha256": "5879fa8e044ed59d7f575ab35f37ff33b55501388c455f53e71fa42c80295d9d"
+  },
+  "receiving_attribution": "Root executed through Renp\u014d and inspected source/output. Retained consumer authored independent oracle and reviewed brokered evidence; coordination provided independent hand derivation and report review; pool_recovery authored module and reviewed scientific scope.",
+  "scope": "Standalone nonfitting descriptive consumer; actual schedule reuse, no primary-engine adoption or inferential claim",
+  "scope_source_sha256": "fc9dea7125db829403c8bca889bd9228a5e790dea84eb68243f97b3114352054",
+  "task_id": "nullgarden-batch-confounding-diagnostic-c70eecd4"
+}

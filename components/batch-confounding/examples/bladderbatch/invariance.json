@@ -1,0 +1,30 @@
+{
+  "all_draws_equal": true,
+  "baseline_auc": {
+    "auc_decimal": 0.8323529411764706,
+    "auc_fraction": {
+      "denominator": 340,
+      "numerator": 283
+    },
+    "losses": 56,
+    "pairs": 680,
+    "status": "defined",
+    "ties": 116,
+    "wins": 508
+  },
+  "diagnostic_input_sha256": "a65187d0eaca0cbb9595fdef355fa886beca66a337053a5af07668ec79c5bb10",
+  "draws_checked": 100,
+  "schedule_integrity_sha256": "f7d5181200eaceb40692db9c97c0514e1aaba1e3e7991ece5d3470a0dbba5b97",
+  "schedule_validation": {
+    "dataset_sha256": "0d6b58d3952f68a12667e8c0eb06cb9ce92e1f8891021044d5546c9413c4afcf",
+    "draw_count": 100,
+    "integrity": "verified_unkeyed_digest",
+    "rng_replay": "verified",
+    "scientific_assumptions": "unverified",
+    "scope": "dataset binding, integrity, structural invariants and deterministic PCG64 replay",
+    "support_status": "nontrivial_label_support",
+    "valid": true
+  },
+  "schema": "nullgarden.batch-confounding-invariance.v1",
+  "status": "verified"
+}

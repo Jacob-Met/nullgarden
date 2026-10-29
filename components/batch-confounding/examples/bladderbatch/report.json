@@ -1,0 +1,256 @@
+{
+  "batches": [
+    {
+      "group": "3",
+      "n": 4,
+      "negative": 4,
+      "outcomes": [
+        {
+          "n": 4,
+          "negative": 4,
+          "outcome": "Normal",
+          "positive": 0
+        }
+      ],
+      "positive": 0,
+      "positive_negative_pairs": 0,
+      "prevalence": {
+        "denominator": 1,
+        "numerator": 0
+      },
+      "within_batch_label_contrast_available": false
+    },
+    {
+      "group": "2",
+      "n": 18,
+      "negative": 4,
+      "outcomes": [
+        {
+          "n": 4,
+          "negative": 4,
+          "outcome": "Normal",
+          "positive": 0
+        },
+        {
+          "n": 13,
+          "negative": 0,
+          "outcome": "sTCC-CIS",
+          "positive": 13
+        },
+        {
+          "n": 1,
+          "negative": 0,
+          "outcome": "mTCC",
+          "positive": 1
+        }
+      ],
+      "positive": 14,
+      "positive_negative_pairs": 56,
+      "prevalence": {
+        "denominator": 9,
+        "numerator": 7
+      },
+      "within_batch_label_contrast_available": true
+    },
+    {
+      "group": "5",
+      "n": 19,
+      "negative": 4,
+      "outcomes": [
+        {
+          "n": 12,
+          "negative": 0,
+          "outcome": "sTCC+CIS",
+          "positive": 12
+        },
+        {
+          "n": 3,
+          "negative": 0,
+          "outcome": "sTCC-CIS",
+          "positive": 3
+        },
+        {
+          "n": 4,
+          "negative": 4,
+          "outcome": "Biopsy",
+          "positive": 0
+        }
+      ],
+      "positive": 15,
+      "positive_negative_pairs": 60,
+      "prevalence": {
+        "denominator": 19,
+        "numerator": 15
+      },
+      "within_batch_label_contrast_available": true
+    },
+    {
+      "group": "1",
+      "n": 11,
+      "negative": 0,
+      "outcomes": [
+        {
+          "n": 11,
+          "negative": 0,
+          "outcome": "mTCC",
+          "positive": 11
+        }
+      ],
+      "positive": 11,
+      "positive_negative_pairs": 0,
+      "prevalence": {
+        "denominator": 1,
+        "numerator": 1
+      },
+      "within_batch_label_contrast_available": false
+    },
+    {
+      "group": "4",
+      "n": 5,
+      "negative": 5,
+      "outcomes": [
+        {
+          "n": 5,
+          "negative": 5,
+          "outcome": "Biopsy",
+          "positive": 0
+        }
+      ],
+      "positive": 0,
+      "positive_negative_pairs": 0,
+      "prevalence": {
+        "denominator": 1,
+        "numerator": 0
+      },
+      "within_batch_label_contrast_available": false
+    }
+  ],
+  "dataset_binding": {
+    "dataset_sha256": "0d6b58d3952f68a12667e8c0eb06cb9ce92e1f8891021044d5546c9413c4afcf",
+    "matrix_convention": "<f8 C",
+    "matrix_sha256": "0c9945e6acc19d8fc24d29d8e91b920dc8803def02c115bdecd2a380fdec3581",
+    "ordered_metadata_sha256": "2e50ab7dd8a1cd0f53836f86463a71424e9ba5b1ef82db0a2c93fbfcab24c208",
+    "shape": [
+      57,
+      22283
+    ]
+  },
+  "design": {
+    "batch_plus_target_rank": 6,
+    "batch_rank": 5,
+    "target_in_batch_indicator_span": false
+  },
+  "diagnostic_input_sha256": "a65187d0eaca0cbb9595fdef355fa886beca66a337053a5af07668ec79c5bb10",
+  "limits": [
+    "The batch-prevalence score uses observed labels and is in-sample descriptive evidence, not held-out predictive performance.",
+    "Available within-batch contrasts and design rank do not establish causal identification, stable estimation, or generalization.",
+    "Within-batch randomization preserves batch label counts and cannot test discrimination arising solely from batch composition.",
+    "Within-batch exchangeability and biological subject independence are unverified scientific assumptions.",
+    "Recorded subject IDs are metadata; absent or unique IDs do not establish independence.",
+    "Any downstream label-dependent pipeline requires complete refitting for each draw, including selection, tuning, fitting and evaluation.",
+    "No p-values, fitted models, causal conclusions, or production-engine integration are supplied."
+  ],
+  "outcome_metadata": {
+    "provided": true,
+    "values": [
+      "Normal",
+      "Normal",
+      "Normal",
+      "Normal",
+      "Normal",
+      "Normal",
+      "Normal",
+      "Normal",
+      "sTCC+CIS",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "sTCC+CIS",
+      "sTCC-CIS",
+      "sTCC+CIS",
+      "sTCC+CIS",
+      "sTCC-CIS",
+      "mTCC",
+      "sTCC+CIS",
+      "mTCC",
+      "mTCC",
+      "mTCC",
+      "sTCC-CIS",
+      "sTCC+CIS",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "sTCC+CIS",
+      "mTCC",
+      "mTCC",
+      "sTCC-CIS",
+      "mTCC",
+      "mTCC",
+      "mTCC",
+      "sTCC+CIS",
+      "mTCC",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "mTCC",
+      "sTCC+CIS",
+      "sTCC+CIS",
+      "sTCC+CIS",
+      "sTCC-CIS",
+      "sTCC-CIS",
+      "mTCC",
+      "sTCC-CIS",
+      "sTCC+CIS",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy",
+      "Biopsy"
+    ]
+  },
+  "schema": "nullgarden.batch-confounding-report.v1",
+  "score": {
+    "auc": {
+      "auc_decimal": 0.8323529411764706,
+      "auc_fraction": {
+        "denominator": 340,
+        "numerator": 283
+      },
+      "losses": 56,
+      "pairs": 680,
+      "status": "defined",
+      "ties": 116,
+      "wins": 508
+    },
+    "name": "in_sample_batch_prevalence_score",
+    "uses_observed_labels": true
+  },
+  "subjects": {
+    "independence_verified": false,
+    "repeated": [],
+    "status": "absent",
+    "unique_count": null
+  },
+  "totals": {
+    "mixed_batches": [
+      "2",
+      "5"
+    ],
+    "mixed_negative": 8,
+    "mixed_positive": 29,
+    "mixed_samples": 37,
+    "n": 57,
+    "negative": 17,
+    "positive": 40,
+    "pure_batches": [
+      "3",
+      "1",
+      "4"
+    ],
+    "within_batch_positive_negative_pairs": 116
+  }
+}
