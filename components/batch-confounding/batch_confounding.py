@@ -3,7 +3,7 @@ import hashlib
 import json
 from fractions import Fraction
 import numpy as np
-from batch_label_schedule import make_schedule, validate_schedule
+from batch_label_schedule import validate_dataset_identity, validate_schedule
 
 SCHEMA = "nullgarden.batch-confounding-report.v1"
 CHECK_SCHEMA = "nullgarden.batch-confounding-invariance.v1"
@@ -107,10 +107,10 @@ def describe_batch_confounding(
     max_schedule_cells=DEFAULT_MAX_SCHEDULE_CELLS,
 ):
     """Describe observed batch/label association without fitting a model."""
-    baseline = make_schedule(dataset, seed=0, draws=0,
-                             max_schedule_cells=max_schedule_cells)
-    binding = baseline["binding"]
-    metadata = baseline["ordered_metadata"]
+    identity = validate_dataset_identity(
+        dataset, max_schedule_cells=max_schedule_cells)
+    binding = identity["binding"]
+    metadata = identity["ordered_metadata"]
     labels, groups = metadata["y"], metadata["groups"]
     n = len(labels)
     outcome_metadata = _outcomes(outcomes, n)

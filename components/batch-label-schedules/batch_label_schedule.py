@@ -136,6 +136,21 @@ def _prepare(dataset):
         "repeated_subject_ids": sorted(k for k, v in Counter(subjects or []).items() if v > 1)}
     return y, np.asarray(groups), indices, binding, meta, diagnostics
 
+def validate_dataset_identity(dataset, *,
+                              max_schedule_cells=DEFAULT_MAX_SCHEDULE_CELLS):
+    """Validate dataset fields and return their canonical identity and metadata.
+
+    Applies the same dataset admission and zero-draw baseline cell budget as
+    make_schedule(dataset, seed=0, draws=0). This does not create a schedule,
+    claim scientific validity, or serialize combinatorial support. Returned
+    dictionaries are newly constructed and contain no references to input
+    lists or matrix storage. Large schedule support may still exceed the
+    runtime JSON integer limit when a caller separately creates a schedule.
+    """
+    y, _groups, _indices, binding, metadata, _diagnostics = _prepare(dataset)
+    _budget(len(y), 0, 0, max_schedule_cells)
+    return {"binding": binding, "ordered_metadata": metadata}
+
 def _assignment(y, permutation, dataset_hash):
     labels = y[permutation]
     return {"dataset_sha256": dataset_hash,
