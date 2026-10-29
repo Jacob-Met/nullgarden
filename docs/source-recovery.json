@@ -1,0 +1,120 @@
+{
+  "format": "nullgarden.original-source-recovery.v1",
+  "original_owner": "estate-557346a0/root",
+  "original_claim": "https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6431474552",
+  "recovery_owner": "estate-c70eecd4-lead",
+  "original_source_unmodified": true,
+  "original_git_commits_at_recovery": 0,
+  "source_files": [
+    {
+      "path": "requirements-data.txt",
+      "bytes": 57,
+      "sha256": "3fffab3262f69983196ddbcb3e48de803d4fdb143cbffa234311875fb76d3a61",
+      "modified": "2026-10-27T02:09:43.704283+00:00"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 14,
+      "sha256": "e77e7045d01a9431264f9262c6b199d8e7988c139276a5266a3cf689588ad66e",
+      "modified": "2026-10-27T02:09:43.704283+00:00"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 143,
+      "sha256": "8b2ccc66a527a83da90bb289a5923bb0b16a54588dc511eb5bb98e0a3ecb83ff",
+      "modified": "2026-10-27T02:09:43.704283+00:00"
+    },
+    {
+      "path": "scripts/prepare_bladderbatch.py",
+      "bytes": 6767,
+      "sha256": "bd2720098ce9a8a7c47cd85cacb09ea90b1522708f1af0166d49bab4c7952435",
+      "modified": "2026-10-27T02:09:43.704283+00:00"
+    },
+    {
+      "path": "core/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "modified": "2026-10-27T02:09:43.704283+00:00"
+    },
+    {
+      "path": "core/storage.py",
+      "bytes": 8803,
+      "sha256": "02ad83178f1add38b93525b04248947559785fedcb394b95adcefe0ffe8207b0",
+      "modified": "2026-10-27T02:13:29.216161+00:00"
+    },
+    {
+      "path": "core/runner.py",
+      "bytes": 782,
+      "sha256": "521d0397c9ccdac65423bd267ae2ffaf9485b0fa7df8870d6116d3553090e4ee",
+      "modified": "2026-10-27T02:13:29.216161+00:00"
+    },
+    {
+      "path": "server/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "modified": "2026-10-27T02:09:43.704283+00:00"
+    },
+    {
+      "path": "data/source/bladderdata.rda",
+      "bytes": 9587704,
+      "sha256": "f53a2f19116f03c2f2c3b71bb8a8803c760116bea73cfb2abaa83b56bf22fd3e",
+      "modified": "2026-10-27T01:46:24.733503+00:00"
+    },
+    {
+      "path": "data/source/bladderbatch_1.48.0.tar.gz",
+      "bytes": 9643865,
+      "sha256": "4ee9a2296ee2b869b900456226858ce5a83b68722c4ed8c1e1f63355a6c93fcc",
+      "modified": "2026-10-27T01:46:24.705503+00:00"
+    },
+    {
+      "path": "data/source/rdata-install.log",
+      "bytes": 3644,
+      "sha256": "722f0f8622e9eebff54512719bb86c95f52d133b5bbe17ef6c7e98a4f7ff3c61",
+      "modified": "2026-10-27T01:46:37.865502+00:00"
+    },
+    {
+      "path": "data/source/bladderbatch.R",
+      "bytes": 502,
+      "sha256": "0b038e8a445361d7f1a29b88be763fe373bb4e672a514143643acc98ce09fd06",
+      "modified": "2026-10-27T01:46:24.741503+00:00"
+    },
+    {
+      "path": "data/source/bladderEset.Rd",
+      "bytes": 764,
+      "sha256": "537f5b37858bbca698ff9a9f2c222a8dae36526f202a03aaae03bcd1caa304a8",
+      "modified": "2026-10-27T01:46:24.745503+00:00"
+    },
+    {
+      "path": "data/source/acquisition.json",
+      "bytes": 330,
+      "sha256": "3be0fec8da429c4f9f30bdf3fb081edc0121cf63ff469ed7ee5fc7a78fdfe99a",
+      "modified": "2026-10-27T01:46:24.713503+00:00"
+    },
+    {
+      "path": "data/source/DESCRIPTION",
+      "bytes": 722,
+      "sha256": "55ff6efbd75c6e8e3b72e7f7f3191ad058979ddf85e87e603d6147acbb66b2c1",
+      "modified": "2026-10-27T01:46:24.721503+00:00"
+    },
+    {
+      "path": "data/source/bladderbatch.Rnw",
+      "bytes": 2494,
+      "sha256": "93768aa5d078e4a5de46cd7b82e57640a9dd49e05dfeaf2079843aac8edea4e4",
+      "modified": "2026-10-27T01:46:24.745503+00:00"
+    }
+  ],
+  "missing_application_parts": [
+    "core.engine",
+    "server implementation",
+    "browser UI"
+  ],
+  "receiving_archive": {
+    "source_url": "estate:nullgarden:source-recovery-and-receiving:c70eecd4:20261029-v2",
+    "sha256": "322a2ffa812dd4de2280768fde125d28dc42093ca2e22cf1416de84059724966",
+    "bytes": 1571756,
+    "files": 115
+  },
+  "classification_boundary": "Public source is already RMA-preprocessed. Binary Cancer versus Normal/Biopsy is a classification adaptation, not reproduction of an original classification pipeline or medical validation.",
+  "original_source_storage": "Original/preserved/execution copies and pinned source binaries retained on coordinator2; no original workspace is overwritten by this repository contribution.",
+  "primary_ownership": "Primary engine/server/UI ownership remains estate-557346a0/root."
+}
