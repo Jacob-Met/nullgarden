@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NULLGARDEN</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="bar">
+  <h1 class="mark">NULLGARDEN</h1>
+  <div class="scn" role="tablist" aria-label="Dataset" id="scenarios"></div>
+  <label class="load">Load CSV<input type="file" id="csvFile" accept=".csv,text/csv"></label>
+  <span class="llm" id="llmState" title="Nemotron on Nebius Token Factory"></span>
+</header>
+
+<main class="stage">
+  <section class="plate" aria-labelledby="plateTitle">
+    <div class="plate-head">
+      <div>
+        <h2 id="plateTitle">Design</h2>
+        <p class="cap" id="plateCap">Each column is a batch. Filled dot = label 1, ring = label 0.</p>
+      </div>
+      <button id="run" class="go" type="button">Run controls</button>
+    </div>
+    <div id="beds" class="beds" aria-live="polite"></div>
+    <fieldset class="picks" id="picks"><legend>Controls to run</legend></fieldset>
+
+    <div id="out" hidden>
+      <div class="verdict" id="verdict" role="status"></div>
+      <div class="ladder" id="ladder"></div>
+      <ul class="findings" id="findings"></ul>
+      <button id="dl" class="quiet" type="button">Download report (Markdown)</button>
+    </div>
+  </section>
+
+  <aside class="side" aria-label="Nemotron">
+    <h2>Ask Nemotron what could be exploited</h2>
+    <label for="note" class="sr">What do you suspect</label>
+    <textarea id="note" rows="3" placeholder="Optional: what makes you suspect a shortcut? e.g. samples were processed on different days"></textarea>
+    <button id="ask" class="go alt" type="button">Propose hypotheses</button>
+    <p class="msg" id="askMsg" role="status"></p>
+    <ol class="hyp" id="hyp"></ol>
+
+    <h2 class="sp">Plain-language read-out</h2>
+    <button id="explain" class="quiet" type="button" disabled>Explain results with Nemotron</button>
+    <p class="msg" id="exMsg" role="status"></p>
+    <div id="explainOut" class="explain" hidden></div>
+  </aside>
+</main>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

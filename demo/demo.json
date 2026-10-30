@@ -1,0 +1,10 @@
+{"url":"http://127.0.0.1:4412/","voice":"sage","steps":[
+{"say":"NULLGARDEN is for scientists and reviewers who see a high cross-validated score on batch-structured data and want to know if the model learned biology or just the batches. This is the bladderbatch design: fifty-seven samples in five batches. Three batches are almost entirely one label.","do":[{"wait":1500}]},
+{"say":"The first dataset has no real signal in the measurements at all, only the batch effect. I ask Nemotron on Nebius Token Factory what could be exploited here, and I type my suspicion.","do":[{"type":["#note","samples were processed on different days"]},{"click":"#ask"}]},
+{"say":"Nemotron, the one hundred twenty billion parameter Super model, is proposing shortcut hypotheses, each tied to one control. It is only a proposal. The app has not tested anything yet.","do":[{"wait":14000}]},
+{"say":"Now the app itself runs the controls. It reruns the same classifier with batch labels alone, with labels shuffled inside each batch, with one batch held out, and with batch means removed.","do":[{"click":"#run"},{"wait":2500}]},
+{"say":"The verdict and the AUC ladder come from fixed rules, not from the model. Each hypothesis now shows whether the computed controls support it.","do":[{"scroll":"#out"},{"wait":3000}]},
+{"say":"Next, Nemotron explains the results in plain language. The app then checks every number in that text against the computed table and shows how many match.","do":[{"click":"#explain"},{"wait":7000}]},
+{"say":"For comparison, the balanced design has the same batches but mixed labels and real signal.","do":[{"click":"#scenarios button:nth-child(3)"},{"wait":1000},{"click":"#run"},{"wait":3500}]},
+{"say":"Here the controls do not collapse, so the score reflects signal. You can download the full report as Markdown. NULLGARDEN: negative controls that run, checked by code.","do":[{"wait":1500}]}
+]}

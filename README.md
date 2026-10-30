@@ -1,21 +1,44 @@
 # NULLGARDEN
 
-NULLGARDEN is the selected HAMON project for executable negative controls in scientific machine learning. The intended application helps researchers review mechanism-specific controls, execute isolated reruns and export a reusable control suite with a corrected pipeline candidate.
+Executable negative controls for scientific machine learning. You load a labelled dataset with batches (or use the bundled bladderbatch-shaped designs), and NULLGARDEN reruns the same classifier under controls that remove the real signal but keep a suspected shortcut. If the score survives, the model was exploiting the shortcut, not learning the biology.
 
-## Ownership and source continuity
+Built for bench scientists and ML reviewers who see a high cross-validated AUC on batch-structured data and need to know whether to believe it.
 
-Primary engine, server and application ownership remains with `estate-557346a0/root` and its retained team, as recorded in the [original project claim](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6431474552). This repository's initial source checkpoint does not transfer that ownership.
+## Quick start
 
-The original sixteen-file uncommitted source was recovered and preserved unchanged. Bounded recovery is recorded in native task `nullgarden-existing-project-reconciliation-20261029`, with complete receiving archive SHA256 `322a2ffa812dd4de2280768fde125d28dc42093ca2e22cf1416de84059724966`.
+Requires Node 22 or newer. No npm dependencies.
 
-Team `estate-c70eecd4` is contributing a separately reviewed, standalone batch-label schedule module and CLI under task `nullgarden-batch-label-schedules-c70eecd4`. See the [integration record](https://github.com/Jacob-Met/hamon/issues/1631#issuecomment-6490413631). It does not complete or replace the missing primary engine/server/UI.
+```
+export NEBIUS_API_KEY=...        # optional; enables the Nemotron features
+node server.mjs                  # serves http://127.0.0.1:4412
+node --test                      # 15 tests, none need the network
+```
 
-## Standalone experimental components
+Open http://127.0.0.1:4412. Pick a dataset tab, press **Run controls**, read the verdict and the AUC ladder. With a key set, **Propose hypotheses** and **Explain results with Nemotron** are live. Without a key those two buttons show a plain message and everything else still works. `PORT` changes the port. A CSV can be loaded with the "Load CSV" button (columns: `sample_id,batch,label,feature...`; label 0 or 1; at least 10 samples).
 
-[Batch-label schedules](components/batch-label-schedules/README.md) provides a runnable Python module and CLI, a self-contained synthetic example, and an independent receiver. Read that component's prerequisites and scientific limitations before use. It generates label schedules and verifies replay; it does not fit models or implement the complete application.
+## The controls
 
-[Batch-confounding diagnostic](components/batch-confounding/README.md) consumes the maintained schedules and verified dataset. It reports observed class overlap, exact batch/target design ranks and a label-derived in-sample batch-prevalence AUC, with JSON and Markdown exports. The [received bladderbatch example](components/batch-confounding/examples/bladderbatch/REPORT.md) preserves all 57 rows and shows why within-batch randomization leaves this descriptive association unchanged. This separate contribution is tracked as `nullgarden-batch-confounding-diagnostic-c70eecd4`; it performs no model fitting or primary-engine integration.
+A fixed pipeline (top-20 feature selection by |t| inside each training fold, then diagonal LDA) is scored by cross-validation, then rerun under four controls: batch-only baseline, within-batch label permutation (with a shuffled-label null band), leave-one-batch-out, and batch-centered features. The rules in `src/core.mjs` turn the ladder of AUCs into a verdict. Nothing in that path calls a model.
 
-The schedule component has an [authenticated-download-verified private experimental release](https://github.com/Jacob-Met/nullgarden/releases/tag/batch-label-schedules-v0.1.0-preview.20261029.1). Source, delivery and interpretation evidence remain distinct.
+## How it uses NVIDIA Nemotron on Nebius Token Factory
 
-The project remains experimental. No live NVIDIA/Nebius qualification, public release, clinical validity or complete application delivery is established by this source checkpoint.
+- **Endpoint and model:** `https://api.tokenfactory.nebius.com/v1/chat/completions` (OpenAI-compatible), model `nvidia/nemotron-3-super-120b-a12b` (override with `NULLGARDEN_MODEL`). The call is made server-side in `src/llm.mjs`; the key is read from `NEBIUS_API_KEY` and never sent to the browser.
+- **Why this size:** the task is short structured reasoning over a small batch table. The 120B-A12B mixture-of-experts model follows the JSON format reliably and answers in about 3 to 10 seconds; a larger model would add latency without changing the checked output.
+- **Propose hypotheses:** Nemotron reads the batch/label table and your note and names up to four shortcut hypotheses, each mapped to one control from the menu. The server drops any item whose control id is not on the menu. The app then runs the controls itself and marks each hypothesis supported or not supported from the computed AUCs. The model proposes; the controls decide.
+- **Explain results:** Nemotron writes a short plain-language read-out of the computed table. Every decimal in its text is compared with the computed figures (tolerance 0.006) and the UI shows "N of M match", flagging any number the controls never produced.
+
+## Honest limits
+
+- The bundled datasets use the real bladderbatch batch/label counts (57 samples, 5 batches) but the expression values are synthetic.
+- One fixed classifier, not your pipeline. The controls demonstrate the method; they are not a certification that a result is valid.
+- Verdicts come from simple AUC thresholds on small samples and are heuristics.
+- Nemotron output varies between calls; the figure check catches wrong numbers, not wrong reasoning.
+- Experimental, not clinically validated.
+
+## Repository components
+
+The `components/` directory holds earlier standalone Python modules (batch-label schedules, batch-confounding diagnostic) contributed separately; see their READMEs. Provenance notes are in `docs/source-recovery.json`. The web app in `server.mjs`, `src/` and `public/` does not depend on them.
+
+## License
+
+MIT, see LICENSE.
