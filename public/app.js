@@ -81,7 +81,13 @@ function markHypotheses() {
     const r = run.results[li.dataset.c]; const chip = li.querySelector('.chip');
     if (!r) { chip.className = 'chip'; chip.textContent = `tests: ${status.controls[li.dataset.c].title} (not selected)`; return; }
     chip.className = 'chip ' + r.status;
-    chip.textContent = r.status === 'shortcut' ? `Supported: ${r.title} flags it (AUC ${r.auc.toFixed(2)})` : r.status === 'signal' ? `Not supported: ${r.title} found signal (AUC ${r.auc.toFixed(2)})` : `Not supported: ${r.title} (AUC ${r.auc === null ? 'n/a' : r.auc.toFixed(2)})`;
+    chip.textContent = r.status === 'shortcut'
+      ? 'Batch shortcut risk: ' + r.title + ' flags it (AUC ' + r.auc.toFixed(2) + ')'
+      : r.id === 'within_batch_permutation' && r.status === 'signal'
+        ? 'Evidence of within-batch sample signal (AUC ' + r.auc.toFixed(2) + ')'
+        : r.id === 'batch_residualized'
+          ? 'Exploratory fold-centered AUC ' + (r.auc === null ? 'n/a' : r.auc.toFixed(2)) + '; cannot settle the shortcut alone'
+          : 'Not established by ' + r.title + ' (AUC ' + (r.auc === null ? 'n/a' : r.auc.toFixed(2)) + ')';
   });
 }
 

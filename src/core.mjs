@@ -85,6 +85,37 @@ export function oof(n, folds, scorer) {
   return out;
 }
 
+// The feature-centering means are learned on the training fold, never the test fold.
+// An unseen batch uses the training-global mean; this remains a separate generalization question.
+export function centerBatchByTrainingFold(X, batch, train, test) {
+  if (!train.length) throw new Error('cannot fit batch centers without training samples');
+  const p = X[0].length, byBatch = new Map();
+  const global = new Float64Array(p);
+  for (const i of train) {
+    const b = batch[i], entry = byBatch.get(b) || { n: 0, sum: new Float64Array(p) };
+    entry.n++;
+    for (let j = 0; j < p; j++) {
+      entry.sum[j] += X[i][j];
+      global[j] += X[i][j];
+    }
+    byBatch.set(b, entry);
+  }
+  for (let j = 0; j < p; j++) global[j] /= train.length;
+  const center = (i) => {
+    const e = byBatch.get(batch[i]);
+    return X[i].map((v, j) => v - (e ? e.sum[j] / e.n : global[j]));
+  };
+  return { trainX: train.map(center), testX: test.map(center),
+    unseenTestBatches: [...new Set(test.map((i) => batch[i]).filter((b) => !byBatch.has(b)))] };
+}
+
+function batchCenteredScorer(X, batch, y, k) {
+  return (train, test) => {
+    const centered = centerBatchByTrainingFold(X, batch, train, test);
+    return fitScore(centered.trainX, pick(y, train), centered.testX, k);
+  };
+}
+
 function modelScorer(X, y, k) {
   return (train, test) => fitScore(pick(X, train), pick(y, train), pick(X, test), k);
 }
@@ -136,7 +167,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
 
   if (selected.includes('batch_only')) {
     const a = repeatedCv(ds, batchPrevalenceScorer(ds.batch, ds.y), { seed: seed + 1 });
-    const same = a >= naive - 0.05;
+    const same = naive >= 0.65 && a >= 0.65 && a >= naive - 0.05;
     results.batch_only = { id: 'batch_only', ...CONTROLS.batch_only, auc: a, status: same ? 'shortcut' : 'neutral',
       finding: same ? 'The batch label alone reproduces the model score. The measurements are not needed to reach it.' : 'The batch label alone scores clearly below the model.' };
   }
@@ -156,45 +187,48 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
     const p = (1 + ge) / (perms + 1);
     const beats = p <= 0.05;
     results.within_batch_permutation = { id: 'within_batch_permutation', ...CONTROLS.within_batch_permutation, auc: mean(nulls), nullMean: mean(nulls), nullLo: quantile(nulls, 0.025), nullHi: quantile(nulls, 0.975), p, perms,
-      status: beats ? 'signal' : 'shortcut',
+      status: beats ? 'signal' : 'neutral',
       finding: beats ? `The observed score is above the batch-preserving null (p = ${p.toFixed(3)}), so some of it depends on which sample carries which label inside a batch.`
-        : `Shuffled labels reach a mean AUC of ${mean(nulls).toFixed(2)} and the observed score is not distinguishable from that null (p = ${p.toFixed(3)}). The batch structure alone explains it.` };
+        : `Shuffled labels reach a mean AUC of ${mean(nulls).toFixed(2)} and the observed score is not distinguishable from that null (p = ${p.toFixed(3)}). Failure to separate from this null does not prove the absence of real signal or establish a shortcut.` };
   }
   if (selected.includes('leave_batch_out')) {
     const s = oof(n, batchFolds(ds.batch), modelScorer(ds.X, ds.y, k));
     const a = auc(s, ds.y);
     const drop = naive - a;
-    results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out, auc: a, status: drop >= 0.15 ? 'shortcut' : 'neutral',
-      finding: drop >= 0.15 ? `Holding out whole batches drops the score by ${drop.toFixed(2)}. The model depends on having seen the batch.` : 'Holding out whole batches changes the score little.' };
+    results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out, auc: a, status: naive >= 0.65 && drop >= 0.15 ? 'shortcut' : 'neutral',
+      finding: naive >= 0.65 && drop >= 0.15 ? `Holding out whole batches drops the score by ${drop.toFixed(2)}. The model depends on having seen the batch.` : 'Holding out whole batches changes the score little.' };
   }
   if (selected.includes('batch_residualized')) {
-    const p = ds.X[0].length, bm = new Map();
-    ds.batch.forEach((b, i) => { const e = bm.get(b) || { c: 0, s: new Float64Array(p) }; e.c++; for (let j = 0; j < p; j++) e.s[j] += ds.X[i][j]; bm.set(b, e); });
-    const Xc = ds.X.map((row, i) => { const e = bm.get(ds.batch[i]); return row.map((v, j) => v - e.s[j] / e.c); });
     const keep = ds.batch.map((b, i) => (mixedSet.has(b) ? i : -1)).filter((i) => i >= 0);
     let a = null;
     if (keep.length >= 10) {
-      const sub = { X: pick(Xc, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
-      a = repeatedCv(sub, modelScorer(sub.X, sub.y, k), { seed: seed + 3 });
+      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
+      a = repeatedCv(sub, batchCenteredScorer(sub.X, sub.batch, sub.y, k), { seed: seed + 3 });
     }
     const survives = a !== null && a >= 0.65;
-    results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized, auc: a, nUsed: keep.length, status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
-      finding: a === null ? 'Too few samples sit in batches with both labels to test this.' : survives ? `With batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Some signal is independent of batch.`
-        : `With batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Little signal remains once batch is gone.` };
+    results.batch_residualized = {
+      id: 'batch_residualized', ...CONTROLS.batch_residualized, auc: a, nUsed: keep.length,
+      status: a === null ? 'neutral' : survives ? 'signal' : 'neutral',
+      preprocessing: 'batch means learned inside each training fold; held-out rows excluded',
+      finding: a === null ? 'Too few samples sit in mixed batches to test this.'
+        : 'Within ' + keep.length + ' mixed-batch samples, training-fold-only centered AUC is ' +
+          a.toFixed(2) + '. This is exploratory: a high score alone is not a null test, and a low score alone does not prove a shortcut.'
+    };
+
   }
   return { n, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
 }
 
 export function verdict(res) {
-  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut') || (res.within_batch_permutation?.status === 'shortcut');
-  const sigs = [res.within_batch_permutation, res.batch_residualized].filter(Boolean);
-  const signal = sigs.length > 0 && sigs.every((r) => r.status === 'signal');
-  const ran = Object.keys(res).length > 1;
-  if (!ran) return { id: 'unrun', label: 'No controls run', text: 'Select at least one control.' };
-  if (shortcut && !signal) return { id: 'shortcut', label: 'Mostly shortcut', text: 'The headline score is explained by batch structure. The controls found no evidence of a within-batch signal.' };
-  if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Part of the score is real within-batch signal; part is batch structure. Report the controlled number, not the naive one.' };
-  if (signal) return { id: 'signal', label: 'Signal holds up', text: 'The score exceeds every batch-preserving control that was run.' };
-  return { id: 'open', label: 'Inconclusive', text: 'No control flagged a shortcut and none showed signal beyond the null. Add controls or samples.' };
+  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut');
+  // A nonsignificant permutation does not establish a shortcut or absence of signal.
+  // A high batch-centered AUC without a permutation null cannot certify signal.
+  const signal = res.within_batch_permutation?.status === 'signal';
+  if (Object.keys(res).length <= 1) return { id: 'unrun', label: 'No controls run', text: 'Select at least one control.' };
+  if (shortcut && signal) return { id: 'both', label: 'Signal plus batch dependence', text: 'Batch-related controls show shortcut risk, while the within-batch label null detects sample-level signal. This does not establish biological causality.' };
+  if (shortcut) return { id: 'shortcut', label: 'Batch shortcut warning', text: 'Batch-related controls show shortcut risk. A nonsignificant within-batch result does not prove biological signal is absent.' };
+  if (signal) return { id: 'signal', label: 'Above batch-preserving null', text: 'The observed score exceeds the tested within-batch permutation null. This is evidence of sample-level signal, not proof of causality or external validity.' };
+  return { id: 'open', label: 'Inconclusive', text: 'The selected controls do not establish a shortcut or reliable within-batch signal. Nonsignificant shuffles or a high centered AUC alone cannot settle the question.' };
 }
 
 export function toMarkdown(name, run, narrative) {
@@ -204,6 +238,6 @@ export function toMarkdown(name, run, narrative) {
   L.push('', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   if (narrative) L.push('', '## Nemotron explanation (figures checked against the table above)', '', narrative);
-  L.push('', '## Corrected evaluation candidate', '', 'Report leave-one-batch-out AUC and the batch-centered mixed-batch AUC next to the batch-only baseline. Treat only the amount above the within-batch permutation null as evidence of learned signal.');
+  L.push('', '## Corrected evaluation candidate', '', 'Report leave-one-batch-out AUC and the batch-centered mixed-batch AUC next to the batch-only baseline. Only a measured separation from a batch-preserving permutation null suggests sample-level signal. Centering is now fitted inside training folds. This does not establish a biological cause or validation on new batches.');
   return L.join('\n') + '\n';
 }
