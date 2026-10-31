@@ -1,6 +1,6 @@
 # NULLGARDEN
 
-Executable negative controls for scientific machine learning. You load a labelled dataset with batches (or use the bundled bladderbatch-shaped designs), and NULLGARDEN reruns the same classifier under controls that remove the real signal but keep a suspected shortcut. If the score survives, the model was exploiting the shortcut, not learning the biology.
+Executable negative controls for scientific machine learning. You load a labelled dataset with batches (or use the bundled bladderbatch-shaped designs), and NULLGARDEN reruns the same classifier under controls that remove the real signal but keep a suspected shortcut. The controls test how much of a high score can be reproduced without sample-level label signal. They reveal shortcut risk, not proof that a model did or did not learn biology.
 
 Built for bench scientists and ML reviewers who see a high cross-validated AUC on batch-structured data and need to know whether to believe it.
 
@@ -18,7 +18,7 @@ Open http://127.0.0.1:4412. Pick a dataset tab, press **Run controls**, read the
 
 ## The controls
 
-A fixed pipeline (top-20 feature selection by |t| inside each training fold, then diagonal LDA) is scored by cross-validation, then rerun under four controls: batch-only baseline, within-batch label permutation (with a shuffled-label null band), leave-one-batch-out, and batch-centered features. The rules in `src/core.mjs` turn the ladder of AUCs into a verdict. Nothing in that path calls a model.
+A fixed pipeline (top-20 feature selection by |t| inside each training fold, then diagonal LDA) is scored by cross-validation, then rerun under four controls: batch-only baseline, within-batch label permutation (with a shuffled-label null band), leave-one-batch-out, and batch-centered features (centers learned separately inside each training fold). The rules in `src/core.mjs` turn the ladder of AUCs into a verdict. Nothing in that path calls a model.
 
 ## How it uses NVIDIA Nemotron on Nebius Token Factory
 
@@ -31,7 +31,7 @@ A fixed pipeline (top-20 feature selection by |t| inside each training fold, the
 
 - The bundled datasets use the real bladderbatch batch/label counts (57 samples, 5 batches) but the expression values are synthetic.
 - One fixed classifier, not your pipeline. The controls demonstrate the method; they are not a certification that a result is valid.
-- Verdicts come from simple AUC thresholds on small samples and are heuristics.
+- Verdicts use small-sample AUC heuristics. A nonsignificant permutation does not prove shortcut or absent signal; a high centered AUC alone is not a null test. Batch means are trained within each CV fold, with a training-global fallback for unseen batches. Pooled held-out-batch AUC may be sensitive to fold score calibration.
 - Nemotron output varies between calls; the figure check catches wrong numbers, not wrong reasoning.
 - Experimental, not clinically validated.
 
