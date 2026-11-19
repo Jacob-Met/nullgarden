@@ -11,7 +11,7 @@ import { conditionalLabelAssignments, runControls, repeatedCv, fitScore } from '
 
 const CONFIG = Object.freeze({
   schema:'nullgarden.subject-null-calibration.v1',
-  nullSeed:20261118, permutationSeed:20261030,
+  permutationSeed:20261030,
   repetitions:[1,3], batches:6, subjectsPerBatch:2,
   nullPermutations:40, nullAlpha:0.05,
   alternativeSubjects:24, alternativeRowsPerSubject:3, alternativePermutations:199,
@@ -53,14 +53,13 @@ function nullReceiving(repeats) {
   // but remove subject metadata so row-based CV and null shuffles are applied.
   // With one reading per donor this should remain identical; with repeats the
   // row-null is *not exchangeable* under this donor-level sampling experiment.
-  const rowDs={...ds,subject:undefined}, rowP=[], rowAuc=[], groupAuc=[];
+  const rowDs={...ds,subject:undefined}, rowP=[], rowAuc=[];
   for(const y of legal) {
     const result=runControls({...rowDs,y},['within_batch_permutation'],
       {seed:CONFIG.permutationSeed,perms:CONFIG.nullPermutations,k:12,stopping:'fixed'});
     const p=result.results.within_batch_permutation;
     assert.ok(p.p!==null, 'row-level incumbent must produce a comparison');
     rowP.push(p.p);rowAuc.push(result.results.naive.auc);
-    groupAuc.push(statistic(ds,y));
   }
   const rowFpr=rowP.filter(p=>p<=CONFIG.nullAlpha).length/64;
   const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
@@ -70,7 +69,7 @@ function nullReceiving(repeats) {
     rowFpr, blockedExactFpr:groupFpr,
     rowRejected:rowP.filter(p=>p<=CONFIG.nullAlpha).length,
     blockedRejected:unitPs.filter(p=>p<=CONFIG.nullAlpha).length,
-    rowAucMean:mean(rowAuc), blockedAucMean:mean(groupAuc),
+    rowAucMean:mean(rowAuc), blockedAucMean:mean(unitScores),
     rowMinP:Math.min(...rowP), blockedMinP:Math.min(...unitPs),
     elapsedMs:Math.round(performance.now()-start),
   };
