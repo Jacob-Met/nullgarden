@@ -130,6 +130,8 @@ const payload={
   ]
 };
 const json=JSON.stringify(payload);const hash=createHash('sha256').update(json).digest('hex');
+const expected='2813d42ff984cdc2312ebf9fa55574532857edb4c06a3809cef1faf01754e821';
+if(hash!==expected)throw new Error('Measured scientific receiving drift: expected '+expected+' but got '+hash+'. Requalify source, labels, folds and probe family before changing the oracle.');
 console.log('real_bladderbatch_family_report='+json);
 console.log('real_bladderbatch_family_sha256='+hash);
 console.log('real_bladderbatch_family_elapsed_ms='+Math.round(performance.now()-start));
