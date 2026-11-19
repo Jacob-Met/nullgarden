@@ -1,0 +1,60 @@
+name: Frozen permutation null-calibration comparison
+
+on:
+  push:
+    branches:
+      - gpt6-mwmtkyolhx1nle5x-permutation-null-identifiability
+    paths:
+      - scripts/permutation_calibration.mjs
+      - .github/workflows/permutation-calibration.yml
+  workflow_dispatch:
+
+jobs:
+  fixed-null-and-power:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify pinned control and current source lineage
+        run: |
+          set -euo pipefail
+          git cat-file -e bda47646ed4f608ec0cd973beff1fb224a824eca^{commit}
+          git merge-base --is-ancestor bda47646ed4f608ec0cd973beff1fb224a824eca HEAD
+          git worktree add --detach "$RUNNER_TEMP/old" bda47646ed4f608ec0cd973beff1fb224a824eca
+      - name: Evaluate incumbent and candidate on identical heldout synthetic seeds
+        run: |
+          set -euo pipefail
+          export TMPDIR="$RUNNER_TEMP"
+          node scripts/permutation_calibration.mjs "$RUNNER_TEMP/old" > "$RUNNER_TEMP/baseline.json"
+          node scripts/permutation_calibration.mjs . > "$RUNNER_TEMP/candidate.json"
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          const oldBytes=readFileSync(process.env.RUNNER_TEMP+'/baseline.json');
+          const newBytes=readFileSync(process.env.RUNNER_TEMP+'/candidate.json');
+          const old=JSON.parse(oldBytes), cur=JSON.parse(newBytes);
+          const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+          if(!same(old.settings,cur.settings))throw Error('Candidate changed frozen calibration settings');
+          if(!same(old.nullFamily.snapshots.map(x=>x.seed),cur.nullFamily.snapshots.map(x=>x.seed))
+             || !same(old.signalFamily.snapshots.map(x=>x.seed),cur.signalFamily.snapshots.map(x=>x.seed))){
+            throw Error('Paired null/signal seeds differ');
+          }
+          const result={schema:'hamon.nullgarden.paired-permutation-receipt.v1',
+            baselineCommit:'bda47646ed4f608ec0cd973beff1fb224a824eca',
+            candidateCommit:process.env.GITHUB_SHA,
+            settings:cur.settings,
+            baseline:{nullHits:old.nullFamily.hits,signalHits:old.signalFamily.hits,
+              milliseconds:old.elapsed_ms},
+            candidate:{nullHits:cur.nullFamily.hits,signalHits:cur.signalFamily.hits,
+              milliseconds:cur.elapsed_ms},
+            delta:{nullHits:cur.nullFamily.hits-old.nullFamily.hits,
+              signalHits:cur.signalFamily.hits-old.signalFamily.hits,
+              elapsedPercent:(cur.elapsed_ms/old.elapsed_ms-1)*100}};
+          console.log(JSON.stringify(result,null,2));
+          console.log('baseline_sha256='+createHash('sha256').update(oldBytes).digest('hex'));
+          console.log('candidate_sha256='+createHash('sha256').update(newBytes).digest('hex'));
+          JS
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
