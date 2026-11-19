@@ -94,3 +94,18 @@ test('cold HTTP uploaded repeated-unit CSV retains true conditional orbit and un
     assert.match(report,/independent units|donor|unit-level/i);
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
+
+test('measured donor memorization collapses when independent units cannot leak between folds',()=>{
+  const options={seed:77,folds:3,repeats:3};
+  const memorize=(train,test)=>{
+    const identityToLabel=new Map(train.map(i=>[ds.unit[i],ds.y[i]]));
+    return test.map(i=>identityToLabel.get(ds.unit[i])??0.5);
+  };
+  const rowSplit=repeatedCv({...ds,unit:undefined},memorize,options);
+  const donorSplit=repeatedCv(ds,memorize,options);
+  assert.ok(rowSplit>0.7,
+    'sample-split CV should expose a donor ID memorization leak on repeated measurements');
+  assert.equal(donorSplit,0.5,
+    'completely unseen donors cannot be learned from an ID memorization rule');
+  console.log('FROZEN_DONOR_LEAK_RECEIVING='+JSON.stringify({rowSplitAuc:rowSplit,donorSplitAuc:donorSplit,n:ds.y.length,independentUnits:12}));
+});
