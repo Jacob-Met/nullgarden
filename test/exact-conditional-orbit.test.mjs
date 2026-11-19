@@ -98,3 +98,14 @@ test('cold HTTP automatically upgrades a small stratified CSV to exact inference
     assert.match(report,/exact conditional|complete.*orbit/i);
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
+
+test('astronomical conditional combinations saturate safely, never allocate the orbit', () => {
+  const batch=Array.from({length:2000},()=> 'one');
+  const labels=Array.from({length:2000},(_,i)=>i<1000?1:0);
+  assert.equal(conditionalOrbitSize(batch,labels,4096),4097);
+  assert.throws(
+    ()=>[...conditionalLabelAssignments(batch,labels,{maxAssignments:4096})],
+    (e)=>e.code==='CONDITIONAL_ORBIT_TOO_LARGE',
+  );
+  assert.equal(labels.filter(v=>v===1).length,1000);
+});
