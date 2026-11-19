@@ -1,0 +1,45 @@
+name: NULLGARDEN measured Bioconductor bladderbatch external receiving
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'research/export-real-bladderbatch.R'
+      - 'research/real-bladderbatch-receiving.mjs'
+      - '.github/workflows/real-bladderbatch-science.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  external-measured-science:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.6.0'
+          use-public-rspm: true
+      - name: Install original Bioconductor assay class dependency
+        run: |
+          Rscript -e 'install.packages("BiocManager", repos="https://cloud.r-project.org"); BiocManager::install("Biobase", ask=FALSE, update=FALSE, version="3.23")'
+      - name: Pin original 1.50.0 experiment source and export 200 fixed probes
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            'https://bioconductor.org/packages/3.23/data/experiment/src/contrib/bladderbatch_1.50.0.tar.gz' \
+            -o "${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz"
+          echo "431b6c2e2b751f706a897a2d6162e6735617975d8f3d783775418a35c6e9de74  ${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz" | sha256sum --check --status
+          sha256sum "${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz"
+          R CMD INSTALL "${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz"
+          export NULLGARDEN_REAL_CSV="${RUNNER_TEMP}/bladderbatch-real-measured.csv"
+          echo "NULLGARDEN_REAL_CSV=${NULLGARDEN_REAL_CSV}" >> "${GITHUB_ENV}"
+          Rscript research/export-real-bladderbatch.R
+          sha256sum "${NULLGARDEN_REAL_CSV}" "${NULLGARDEN_REAL_CSV}.cancer-v-normal.csv" "${NULLGARDEN_REAL_CSV}.cancer-v-biopsy.csv"
+      - name: Execute real-assay controls and report epistemic boundaries
+        run: |
+          node research/real-bladderbatch-receiving.mjs
+      - name: Remove raw measured assay CSV from transient runner
+        if: always()
+        run: rm -f "${NULLGARDEN_REAL_CSV}" "${NULLGARDEN_REAL_CSV}.cancer-v-normal.csv" "${NULLGARDEN_REAL_CSV}.cancer-v-biopsy.csv" "${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz"
