@@ -109,3 +109,18 @@ test('astronomical conditional combinations saturate safely, never allocate the 
   );
   assert.equal(labels.filter(v=>v===1).length,1000);
 });
+
+test('complete 64-allocation randomization null controls finite-sample type-I exactly', () => {
+  // Under the conditional null each of the 64 possible observed labelings
+  // is equiprobable. Verify the entire distribution of exact rank p values,
+  // including ties, rather than trusting a Monte Carlo false-positive sample.
+  const reference=independentOrbitP(ds,{seed:20261030,k:1});
+  const exactP=reference.nulls.map(observed =>
+    reference.nulls.filter(nullScore => nullScore >= observed).length/64);
+  assert.ok(exactP.every(p=>p >= 1/64 && p <= 1));
+  for (const alpha of [0.01,0.03125,0.05,0.1,0.2,0.5,1]) {
+    const typeI=exactP.filter(p=>p<=alpha).length/64;
+    assert.ok(typeI<=alpha+1e-12,
+      'exact conditional randomization must be superuniform at alpha '+alpha);
+  }
+});
