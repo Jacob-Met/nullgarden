@@ -301,7 +301,21 @@ export function batchCenteredScorer(ds, k = 20) {
   };
 }
 
-export function mean(a) { return a.reduce((s, v) => s + v, 0) / a.length; }
+export function mean(a) {
+  if (!a.length) return NaN;
+  // Reference-centered compensated summation preserves a constant null
+  // statistic bit-for-bit and avoids overflow when finite means are near
+  // the largest representable IEEE double. The naive sum/a.length does not.
+  const reference = a[0];
+  let total = 0, correction = 0;
+  for (let i = 1; i < a.length; i++) {
+    const increment = (a[i] - reference) - correction;
+    const next = total + increment;
+    correction = (next - total) - increment;
+    total = next;
+  }
+  return reference + total / a.length;
+}
 export function quantile(a, q) { const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; }
 
 export function designTable(ds) {
