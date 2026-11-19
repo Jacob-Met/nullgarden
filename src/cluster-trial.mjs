@@ -2,6 +2,26 @@ import {conditionalClusters, conditionalOrbitSize, conditionalLabelAssignments,
   sampleConditionalLabels} from './exact-orbit.mjs';
 import {rng} from './core.mjs';
 
+function numericFailure(where){
+  const error=new RangeError('Trial outcome numerical range unsupported in '+where
+    +'; rescale measurements or choose a representable outcome contrast');
+  error.code='TRIAL_NUMERIC_RANGE_UNSUPPORTED';throw error;
+}
+function stableMean(values,where){
+  if(!values.length)throw new Error('Empty experimental unit at '+where);
+  let scale=0;
+  for(const value of values){
+    if(!Number.isFinite(value))numericFailure(where);
+    scale=Math.max(scale,Math.abs(value));
+  }
+  if(scale===0)return 0;
+  let normalized=0;
+  for(const value of values)normalized+=value/scale;
+  const result=(normalized/values.length)*scale;
+  if(!Number.isFinite(result))numericFailure(where);
+  return result;
+}
+
 // Design-based Fisher randomization: outcomes are held fixed under the SHARP
 // null; treatment is exchanged between whole randomized clusters, never rows.
 // The statistic is an equal-stratum mean of differences in equal-cluster mean
@@ -47,17 +67,9 @@ function prepare(ds,plan){
   const clusterGroups=conditionalClusters(ds.batch,ds.y,ds.subject,ds.cluster);
   const blocks=new Map(),strata=new Map();
   for(const group of clusterGroups){
-    const meanSubject=group.units.map(unit=>{
-      let sum=0;
-      for(const i of unit.indices){
-        const v=ds.X[i][featureIndex];
-        if(!Number.isFinite(v))throw new RangeError('Trial outcome has non-finite measurement');
-        sum+=v;
-      }
-      return sum/unit.indices.length;
-    });
-    const outcome=meanSubject.reduce((a,b)=>a+b,0)/meanSubject.length;
-    if(!Number.isFinite(outcome))throw new RangeError('Unrepresentable trial outcome cluster mean');
+    const meanSubject=group.units.map(unit=>stableMean(unit.indices.map(i=>
+      ds.X[i][featureIndex]),'subject '+unit.id));
+    const outcome=stableMean(meanSubject,'cluster '+group.id);
     const block={id:group.id,batch:group.batch,label:group.units[0].label,
       indices:group.units.flatMap(u=>u.indices),subjects:group.units.length,outcome};
     if(group.units.some(u=>u.label!==block.label)){
@@ -74,20 +86,21 @@ function prepare(ds,plan){
   }));
   const unsupported=summary.filter(s=>s.treated===0||s.control===0);
   const statistic=(labels)=>{
-    let total=0;
-    for(const [,units] of strata){
-      let yes=0,no=0,ny=0,nn=0;
+    const contrasts=[];
+    for(const [stratum,units] of strata){
+      const yes=[],no=[];
       for(const unit of units){
         const label=labels[unit.indices[0]];
         if(label!==0&&label!==1)throw new TypeError('Randomization labels must be binary');
         if(unit.indices.some(i=>labels[i]!==label))throw new Error('Randomization broke a complete cluster block');
-        if(label===1){yes+=unit.outcome;ny++;}
-        else {no+=unit.outcome;nn++;}
+        (label===1?yes:no).push(unit.outcome);
       }
-      if(!ny||!nn)throw new Error('Stratum has no randomized treatment contrast');
-      total+=yes/ny-no/nn;
+      if(!yes.length||!no.length)throw new Error('Stratum has no randomized treatment contrast');
+      const difference=stableMean(yes,'treated stratum '+stratum)-stableMean(no,'control stratum '+stratum);
+      if(!Number.isFinite(difference))numericFailure('stratum treatment contrast '+stratum);
+      contrasts.push(difference);
     }
-    return total/strata.size;
+    return stableMean(contrasts,'equal-stratum treatment contrast');
   };
   return {statistic,summary,unsupported,nClusters:clusterGroups.length,
     nSubjects:clusterGroups.reduce((n,g)=>n+g.units.length,0)};
