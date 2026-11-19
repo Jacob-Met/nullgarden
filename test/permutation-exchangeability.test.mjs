@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runControls } from '../src/core.mjs';
+import { runControls, mean } from '../src/core.mjs';
 import { SCENARIOS } from '../src/data.mjs';
 
 const pureBatchLabels = {
@@ -60,4 +60,10 @@ test('fixed-statistic null still rejects strong genuine within-batch signal', ()
   // One significant permutation test alone does not certify signal without
   // its separate fold-local centering corroborator.
   assert.equal(r.verdict.id, 'open');
+});
+
+test('constant or high-magnitude statistical moments are not changed by accumulation', () => {
+  const value = 0.34722222222222227;
+  assert.equal(mean(Array.from({ length: 32 }, () => value)), value);
+  assert.equal(mean([1e308, 1e308, 1e308]), 1e308);
 });
