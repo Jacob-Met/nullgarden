@@ -136,7 +136,7 @@ test('algebraic event sweep retains signed line ties at closed edges, isolated p
 });
 
 test('independent 64-mask brute-force p agrees with exact inverted confidence-set membership across a frozen effect grid',()=>{
-  const ds=trial(0,5),run=runTrialConfidenceSet(ds);
+  const ds=trial(11,5),run=runTrialConfidenceSet(ds);
   assert.equal(run.status,'exact');
   assert.equal(run.confidenceLevel,.95);
   assert.equal(run.orbitSize,64);
@@ -154,6 +154,18 @@ test('independent 64-mask brute-force p agrees with exact inverted confidence-se
     assert.equal(includesWire(run.intervals,candidate),retained,
       'exact inversion and independent full randomization disagree at candidate effect '+candidate);
   }
+});
+
+test('honest finite-sample noncoverage: a genuinely unlucky legal randomization may exclude the true effect',()=>{
+  const unlucky=trial(0,5);
+  const oracle=bruteP(unlucky,5);
+  assert.equal(oracle.p,2/64,
+    'extreme treatment assignment is a valid level-0.05 false rejection under the sharp null');
+  const set=runTrialConfidenceSet(unlucky);
+  assert.equal(set.status,'exact');
+  assert.equal(includesWire(set.intervals,5),false);
+  // Exact 95% coverage is a property over the entire randomized allocation
+  // ensemble, not a promise of inclusion for every observed allocation.
 });
 
 test('complete finite randomization coverage for constant additive effect across ALL 64 observed assignments',()=>{
@@ -195,7 +207,7 @@ test('cold HTTP locks model and confidence level at dataset intake; report inclu
     return {status:res.status,data:asText?await res.text():await res.json()};
   };
   try{
-    const ds=trial(0,6);
+    const ds=trial(11,6);
     const request={csv:csv(ds),randomization:ds.randomization,
       trialOutcome:ds.trialOutcome,effectModel:'constant_additive',
       family:{ks:[1,2],seed:21,perms:40}};
