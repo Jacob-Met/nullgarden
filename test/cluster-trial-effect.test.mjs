@@ -129,6 +129,19 @@ test('1024-allocation trial follows frozen Monte Carlo +1, never pretends it is 
   assert.ok(a.p>=1/130&&a.p<=1);
 });
 
+test('huge finite outcomes never overflow summation into fabricated p-values',()=>{
+  const same=trial();
+  same.X.forEach(row=>{row[0]=1e308;});
+  const result=runClusterTrialOutcome(same);
+  assert.equal(result.observedContrast,0);
+  assert.equal(result.p,1);
+  assert.equal(result.orbitSize,64);
+  const outside=trial();
+  outside.X.forEach((row,i)=>{row[0]=outside.y[i]?1e308:-1e308;});
+  assert.throws(()=>runClusterTrialOutcome(outside),
+    error=>error.code==='TRIAL_NUMERIC_RANGE_UNSUPPORTED');
+});
+
 test('registration refuses post-hoc or invalid outcome, mechanism, and one-class strata without silent selection',()=>{
   const ds=trial();
   assert.throws(()=>planClusterTrialOutcome({...ds,randomization:null},plan),/preregistered/);
