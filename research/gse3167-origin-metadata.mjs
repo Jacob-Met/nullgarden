@@ -67,6 +67,31 @@ for(const record of records){
       idsFound.push({gsm:record.gsm,key:field.slice(0,idx).trim(),publicSubjectCode:field.slice(idx+1).trim()});
   }
 }
+// First-class subject-key fields are absent, but provenance is present in
+// the original assay title AND its source_name for cystectomy biopsies.
+ // Accept only a concordant, clearly scoped cystectomy identifier; never
+ // generalize the "digits-dash-digits" convention of unrelated tumors.
+const cystectomy=new Map();
+for(const record of records) {
+  const titleMatch=/^C(\d+)-(\d+)$/.exec(record.title);
+  const sourceMatch=/^Biopsy\s+(\d+)\s+(?:from|form)\s+cystectomy\s+(\d+)$/i.exec(record.sourceName);
+  if(Boolean(titleMatch)!==Boolean(sourceMatch))
+    throw new Error('Cystectomy provenance mismatches between title and source for '+record.gsm);
+  if(!titleMatch)continue;
+  if(titleMatch[1]!==sourceMatch[2]||titleMatch[2]!==sourceMatch[1])
+    throw new Error('Cystectomy patient/biopsy numbers disagree in original GEO metadata for '+record.gsm);
+  const id='cystectomy-'+titleMatch[1];
+  if(!cystectomy.has(id))cystectomy.set(id,[]);
+  cystectomy.get(id).push({gsm:record.gsm,biopsyNumber:Number(titleMatch[2]),
+    title:record.title,source:record.sourceName});
+}
+const verifiedPairedBiopsies=[...cystectomy.entries()].map(([id,assays])=>({
+  sourceDonorId:id,assays:assays.sort((a,b)=>a.biopsyNumber-b.biopsyNumber)
+})).sort((a,b)=>Number(a.sourceDonorId.split('-')[1])-Number(b.sourceDonorId.split('-')[1]));
+if(verifiedPairedBiopsies.length!==5 ||
+  verifiedPairedBiopsies.some(group=>group.assays.length!==2) ||
+  new Set(verifiedPairedBiopsies.flatMap(group=>group.assays.map(a=>a.gsm))).size!==10)
+  throw new Error('Primary GEO donor pairing changed: expected five explicit cystectomy pairs / ten assays');
 const seriesSummary=(seriesFields.get('!Series_summary')||[]).join(' ');
 const seriesDesign=(seriesFields.get('!Series_overall_design')||[]).join(' ');
 const seriesDescription=(seriesFields.get('!Series_description')||[]).join(' ');
@@ -76,22 +101,27 @@ if(compressedSha256!==knownSourceSha)
   throw new Error('Primary GEO study source hash changed; frozen reference '+knownSourceSha
     +' observed '+compressedSha256+'. Reverify source revision and sample linkage.');
 const output={
-  schema:'nullgarden.geo-GSE3167-public-metadata.v1',source,
+  schema:'nullgarden.geo-GSE3167-public-metadata.v2',source,
   compressedSha256,compressedBytes,linesCount,headerLineCount,
   dataMatrixRowsReadWithoutStoring:tableRows,
   numberOfGsmSamples:records.length,
   presentHeaderKeys:[...fields.keys()].sort(),
   explicitSubjectCodeCount:idsFound.length,explicitSubjectCodes:idsFound,
+  independentlyCrosscheckedCystectomyDonorGroups:verifiedPairedBiopsies,
+  repeatedBiopsyDonorGroups:verifiedPairedBiopsies.length,
+  repeatedBiopsyAssays:verifiedPairedBiopsies.reduce((n,g)=>n+g.assays.length,0),
+  ungroupedAssaysWithoutVerifiedDonorLinkage:
+    records.length-verifiedPairedBiopsies.reduce((n,g)=>n+g.assays.length,0),
   sourceSeriesSummary:seriesSummary,sourceSeriesDesign:seriesDesign,
   sourceSeriesDescription:seriesDescription,
   sourceExplicitlyProvesRepeatedDonors:/same (urinary )?bladder|same patient|same subject|paired|multiple biopsies/i.test(
     [seriesSummary,seriesDesign,seriesDescription].join(' ')),
   metadataContainsVerifiableSubjectMapping:idsFound.length===access.length,
-  inference:'GSM accession identifies an assay, not an independent biological donor; no subject-level permutation validity may be inferred from accession uniqueness',
+  inference:'Ten assays explicitly identify five paired cystectomy donor groups by concordant C<donor>-<biopsy> title and source_name. The remaining 50 GEO accessions have no positively verified within-series donor grouping. These ten are source-linked at the 60-array level ONLY; the Bioconductor processed 57-row subset still needs an exact accession/sample crosswalk. Never permute correlated biopsies as separate donors.',
   records
 };
 if(!output.sourceExplicitlyProvesRepeatedDonors)
   throw new Error('Pinned primary study did not verify biologically dependent biopsies; recheck GEO series narrative');
 if(output.metadataContainsVerifiableSubjectMapping)
-  throw new Error('Public metadata now expose subject labels; audit and install actual blocked mapping before issuing scientific conclusions');
+  throw new Error('Every GEO sample now carries subject IDs; requalify the historical evidence before generalizing grouping');
 console.log('GEO_ORIGIN_AUDIT='+JSON.stringify(output));
