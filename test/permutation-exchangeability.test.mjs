@@ -55,3 +55,15 @@ test('permutation inference reports its fixed budget and restricted scientific v
   assert.ok(result.p >= 1 / 24 && result.p <= 1);
   assert.ok(result.perms === 23);
 });
+
+test('failure to reject the conditional null is NOT positive evidence of batch shortcut', () => {
+  const ds = SCENARIOS.shortcut_only.make();
+  const r = runControls(ds, ['within_batch_permutation'],
+    { seed: 20261030, perms: 39, k: 20 });
+  assert.ok(r.results.within_batch_permutation.p > 0.05);
+  assert.equal(r.results.within_batch_permutation.status, 'neutral');
+  assert.equal(r.verdict.id, 'open',
+    'non-significance cannot by itself attribute the entire score to batch');
+  assert.doesNotMatch(r.results.within_batch_permutation.finding,
+    /alone explains|proves.*batch/i);
+});
