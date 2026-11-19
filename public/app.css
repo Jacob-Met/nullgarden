@@ -24,6 +24,11 @@ button,textarea,input{font:inherit;color:inherit}
 .trial-effect .trial-metric b{display:block;font:600 25px var(--mono);color:var(--lime)}
 .trial-effect p{max-width:76ch;font-size:13px;color:var(--dim);margin:8px 0 0}
 .trial-effect .trial-limit{font-size:11px}
+.trial-set{margin-top:14px;padding:12px 0 0;border-top:1px dashed var(--line);font:12px var(--mono)}
+.trial-set h4{font:600 13px var(--mono);margin:0 0 7px}
+.trial-set .set-intervals{font:600 19px var(--mono);word-break:break-word}
+.trial-set p{max-width:85ch;margin-top:7px}
+
 
 .llm{font:12px var(--mono);color:var(--dim)}
 .llm::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-right:8px}
