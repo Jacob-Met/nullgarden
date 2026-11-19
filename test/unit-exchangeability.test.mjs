@@ -34,7 +34,8 @@ test('unit-stratified CV never splits technical replicates across train and test
   assert.equal(folds.length,3);
   assert.ok(folds.flat().length===ds.y.length);
   for(const f of folds)for(const i of f)
-    assert.ok(f.includes(...ds.ids.map((_,j)=>j).filter(j=>ds.unit[j]===ds.unit[i])));
+    assert.ok(ds.ids.map((_,j)=>j).filter(j=>ds.unit[j]===ds.unit[i]).every(j=>f.includes(j)),
+      'entire unit must occupy one heldout fold');
 });
 
 test('unit AUC counts independent donors once, not technical replicates',()=>{
