@@ -10,6 +10,8 @@
 <header class="bar">
   <h1 class="mark">NULLGARDEN</h1>
   <div class="scn" role="tablist" aria-label="Dataset" id="scenarios"></div>
+  <label class="trial" title="Only select when whole clusters were truly randomized uniformly within their batch or stratum. Cluster metadata alone does not establish randomization."><input type="checkbox" id="trialMode"> Registered cluster trial</label>
+  <label class="trial-id">Protocol ID <input id="trialProtocol" type="text" maxlength="200" placeholder="Preregistered trial ID" disabled aria-label="Cluster randomization protocol identifier"></label>
   <label class="load">Load CSV<input type="file" id="csvFile" accept=".csv,text/csv"></label>
   <span class="llm" id="llmState" title="Nemotron on Nebius Token Factory"></span>
 </header>
