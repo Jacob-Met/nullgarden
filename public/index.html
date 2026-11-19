@@ -30,10 +30,12 @@
     <fieldset class="picks" id="picks"><legend>Controls to run</legend></fieldset>
 
     <div id="out" hidden>
+      <section class="trial-effect" id="trialEffect" hidden aria-live="polite"></section>
+      <p class="cap" id="classificationCap" hidden>Secondary diagnostic only: predicting treatment assignment from measurements is not a causal treatment-effect estimate.</p>
       <div class="verdict" id="verdict" role="status"></div>
       <div class="ladder" id="ladder"></div>
       <ul class="findings" id="findings"></ul>
-      <section class="trial-effect" id="trialEffect" hidden aria-live="polite"></section>
+
       <button id="dl" class="quiet" type="button">Download report (Markdown)</button>
     </div>
   </section>
