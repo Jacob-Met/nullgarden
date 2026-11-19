@@ -222,22 +222,27 @@ export function centerFoldByTrainingBatch(X, batch, train, test) {
   for (const item of observed.values()) {
     for (let j = 0; j < p; j++) if (item.scale[j] === 0) item.scale[j] = 1;
   }
+  for (const item of observed.values()) item.mean = new Float64Array(p);
   for (const i of train) {
     const item = observed.get(batch[i]);
     for (let j = 0; j < p; j++) item.sum[j] += X[i][j] / item.scale[j];
+  }
+  for (const item of observed.values()) {
+    for (let j = 0; j < p; j++) {
+      item.mean[j] = (item.sum[j] / item.count) * item.scale[j];
+      if (!Number.isFinite(item.mean[j])) {
+        throw numericalFailure('batch training mean feature ' + j);
+      }
+    }
   }
   const center = (i) => {
     const item = observed.get(batch[i]);
     return X[i].map((value, j) => {
       if (!Number.isFinite(value)) throw numericalFailure('batch heldout feature ' + j);
-      const normalized = value / item.scale[j] - item.sum[j] / item.count;
-      // The result can legitimately be unrepresentable for a finite but
-      // enormous heldout-to-training ratio. Reject instead of contaminating
-      // the downstream feature selection with Infinity.
-      if (!Number.isFinite(normalized)) {
-        throw numericalFailure('batch-heldout normalized range feature ' + j);
-      }
-      const corrected = normalized * item.scale[j];
+      // Reconstruct a stable finite training mean BEFORE subtraction.
+      // This preserves exact binary-integer offsets for ordinary inputs,
+      // without amplifying normalized cancellation when multiplying back.
+      const corrected = value - item.mean[j];
       if (!Number.isFinite(corrected)) {
         throw numericalFailure('batch-heldout centered feature ' + j);
       }
