@@ -418,20 +418,23 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
     // Exact enumeration is preferable to Monte Carlo when the complete
     // batch-conditional orbit fits a deterministic work budget. Saturated
     // combinatorial counts avoid factorial overflow on uploaded datasets.
-    const exactMax = Math.max(1, Math.min(512,
-      Math.floor(25000000 / Math.max(1, n * ds.X[0].length * 15))));
-    const orbitSize = naive !== null && Number.isInteger(perms) && perms >= 1
+    const exactMax = Math.min(512,
+      Math.floor(25000000 / Math.max(1, n * ds.X[0].length * 15)));
+    const orbitSize = exactMax >= 1 && naive !== null
+      && Number.isInteger(perms) && perms >= 1
       ? conditionalOrbitSize(ds.batch, ds.y, exactMax) : null;
     if (orbitSize !== null && orbitSize <= exactMax) {
       const nulls = [];
+      let observedAllocations = 0;
       for (const labels of conditionalLabelAssignments(ds.batch, ds.y,
         {maxAssignments: exactMax})) {
+        if (labels.every((label, i) => label === ds.y[i])) observedAllocations++;
         const score = repeatedCv({...ds, y: labels},
           modelScorer(ds.X, labels, k), {seed, repeats: 3});
         nulls.push(score);
         if (score === null || !Number.isFinite(score)) break;
       }
-      const valid = nulls.length === orbitSize
+      const valid = nulls.length === orbitSize && observedAllocations === 1
         && nulls.every((v) => v !== null && Number.isFinite(v));
       const metadata = {
         perms, permsBudget: orbitSize, permsRun: nulls.length,
@@ -450,6 +453,9 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         };
       } else {
         const exceedances = nulls.filter((v) => v >= naive).length;
+        if (exceedances < 1) {
+          throw new Error('Exact conditional-orbit invariant failed: observed allocation must contribute at least one tied/exceeding statistic');
+        }
         const p = exceedances / orbitSize;
         const nullMean = mean(nulls);
         results.within_batch_permutation = {
