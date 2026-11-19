@@ -14,11 +14,31 @@ node server.mjs                  # serves http://127.0.0.1:4412
 node --test                      # 15 tests, none need the network
 ```
 
-Open http://127.0.0.1:4412. Pick a dataset tab, press **Run controls**, read the verdict and the AUC ladder. With a key set, **Propose hypotheses** and **Explain results with Nemotron** are live. Without a key those two buttons show a plain message and everything else still works. `PORT` changes the port. A CSV can be loaded with the "Load CSV" button (columns: `sample_id,batch,label,feature...`; label 0 or 1; at least 10 samples).
+Open http://127.0.0.1:4412. Pick a dataset tab, press **Run controls**, read the verdict and the AUC ladder. With a key set, **Propose hypotheses** and **Explain results with Nemotron** are live. Without a key those two buttons show a plain message and everything else still works. `PORT` changes the port. A CSV can be loaded with the "Load CSV" button (columns: `sample_id,batch,label,feature...` or `sample_id,batch,label,subject_id,feature...`; label 0 or 1; at least 10 measurement rows). The optional `subject_id` is essential when multiple rows come from the same donor/patient/animal; it may not span batches or have contradictory labels.
 
 ## The controls
 
 A fixed pipeline (top-20 feature selection by |t| inside each training fold, then diagonal LDA) is scored by cross-validation, then rerun under four controls: batch-only baseline, within-batch label permutation (with a shuffled-label null band), leave-one-batch-out, and batch-centered features. The rules in `src/core.mjs` turn the ladder of AUCs into a verdict. Nothing in that path calls a model.
+
+## Independent units, repeated measurements, and blocked inference
+
+A sample row is not necessarily an independent biological replicate. In a study with technical replicates, multiple imaging frames per person, longitudinal visits, or repeated assays, ordinary row-wise cross-validation leaks subject fingerprints between train and test; row-wise conditional permutations also generate label configurations that were *never physically randomized*. A small apparent p-value in that setting can be anti-conservative.
+
+**Use the fourth CSV column `subject_id` whenever a donor contributes multiple measurements:**
+
+```csv
+sample_id,batch,label,subject_id,feature_1,feature_2
+assay-001,runA,1,donor-P,2.5,1.3
+assay-002,runA,1,donor-P,2.6,1.1
+assay-003,runA,0,donor-N,0.4,2.0
+assay-004,runA,0,donor-N,0.5,1.9
+```
+
+The native engine now treats subjects as **indivisible conditional-label allocation units**. Every row from one subject must belong to the same batch and carry the same binary label; contradictory subject metadata is rejected at CSV intake and direct library use. Stratified CV assigns entire subjects to folds, averages repeated held-out scores to one score per subject before within-fold AUROC, and reruns the **complete training-only feature selection + diagonal-LDA** under the same subject-heldout statistic for observed and randomized labels. The exact conditional orbit counts combinations of *subject labels* per batch, not combinations of individual rows, and the Monte Carlo path shuffles those same blocks. For example, six batches with two subject units (one of each label) and two measurements per unit have exactly **64 = 2^6** assignments, not 46,656 = 6^6 row-wise pseudo-permutations. The web app and Markdown export state the independent-unit count and grouping mode.
+
+**Scope:** This is a one-level, subject-nested-in-batch design. It does not solve multi-level family/site hierarchies, subjects crossing batches, interventions changing labels within the same subject, time-series dependencies, or exchangeability under unmeasured common factors. A `subject_id` asserts an analysis grouping; it does not *prove* independent donors or justify exchanging donor-level labels. If `subject_id` is omitted, each row is **assumed** independent and the user is explicitly warned. This design controls the permutation *unit*, not the scientific causal interpretation. Exact inference requires a predeclared test statistic and an actually exchangeable subject-level null, while the fixed-budget sequential bound inherits its prior constraints.
+
+The receiving suite includes independent 64-mask exhaustive p-value computation, finite-null type-I enumeration over all 64 legal observations, donor coassignment to folds, grouped Monte Carlo invariants, metadata contradiction failures, and end-to-end HTTP/CSV and exported-report checks. See [Winkler et al., *Multi-level block permutation*](https://pubmed.ncbi.nlm.nih.gov/26074200/) (NeuroImage 2015) for why exchangeability blocks matter and [Roberts et al., *Cross-validation strategies for hierarchical data*](https://doi.org/10.1111/ecog.02881) (Ecography 2017) for leakage from dependence in ordinary random splits.
 
 ## Exact batch-conditional randomization for tractable designs
 
@@ -42,7 +62,7 @@ This is the conservative **fixed-horizon anytime-valid** construction in Fischer
 
 ## What the permutation p-value actually tests
 
-The batch-conditional null fixes each batch's observed label count and uniformly shuffles labels **inside** its batch. Every shuffled dataset is processed by the **same deterministic three-repeat stratified-CV AUC statistic**, with the **same CV seed and folds generator** as the observed dataset. The finite Monte Carlo p-value is `(1 + number of shuffled statistics >= observed statistic) / (1 + shuffled datasets)`; the fixed budget is 100 shuffles by default. Previous revisions compared a three-repeat observed AUC to one-repeat shuffles with different fold seeds. Those numbers were not a valid exchangeable null for the same statistic and are **not** comparable to current p-values. The CI suite compares the core to an independent conditional-shuffle oracle over all three bundled scenarios and multiple frozen seeds.
+The batch-conditional null fixes each batch's observed **independent-unit** label count and uniformly shuffles labels **inside** its batch, moving every repeated measurement with its subject when `subject_id` is supplied. Every shuffled dataset is processed by the **same deterministic three-repeat stratified-CV AUC statistic**, with the **same CV seed and folds generator** as the observed dataset. The finite Monte Carlo p-value is `(1 + number of shuffled statistics >= observed statistic) / (1 + shuffled datasets)`; the fixed budget is 100 shuffles by default. Previous revisions compared a three-repeat observed AUC to one-repeat shuffles with different fold seeds. Those numbers were not a valid exchangeable null for the same statistic and are **not** comparable to current p-values. The CI suite compares the core to an independent conditional-shuffle oracle over all three bundled scenarios and multiple frozen seeds.
 
 The resulting p-value is valid **only under within-batch label exchangeability under the null**, with analysis choices (pipeline, seed, labels, controls and permutation budget) fixed before inspecting the result. It does **not** establish a causal effect or certify generalization, and it is **not anytime-valid**: repeatedly changing seeds, rerunning different tests, selecting favorable controls after looking, or stopping after a promising interim shuffle count can inflate false positives. A p-value above the threshold means *insufficient evidence against this conditional null*, **not** that a batch shortcut has been proved. Positive shortcut evidence must come from its separate batch-only or held-out-batch diagnostics.
 
@@ -86,6 +106,7 @@ We use these results to choose transparent, non-leaking diagnostics; neither met
 
 ## Honest limits
 
+- The validity of any p-value still depends on an exchangeable null at the correct subject level; a subject ID alone does not identify independent participants or validate treatment assignment.
 - The bundled datasets use the real bladderbatch batch/label counts (57 samples, 5 batches) but the expression values are synthetic.
 - One fixed classifier, not your pipeline. The controls demonstrate the method; they are not a certification that a result is valid.
 - Verdicts come from simple AUC thresholds on small samples and are heuristics. Batch-transfer macro AUC requires at least two evaluable mixed-label heldouts; even then, few batches imply high uncertainty.
