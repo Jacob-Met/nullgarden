@@ -99,6 +99,46 @@ function batchPrevalenceScorer(batch, y) {
   };
 }
 
+// Batch centering is part of the fitted preprocessing pipeline. The
+// held-out fold never contributes a feature value to its training estimate.
+// A previously unseen test batch is not centerable without transduction;
+// fail closed rather than substituting a test-fold batch mean.
+export function centerFoldByTrainingBatch(X, batch, train, test) {
+  const p = X[0].length;
+  const observed = new Map();
+  for (const i of train) {
+    let item = observed.get(batch[i]);
+    if (!item) {
+      item = { sum: new Float64Array(p), count: 0 };
+      observed.set(batch[i], item);
+    }
+    item.count++;
+    for (let j = 0; j < p; j++) item.sum[j] += X[i][j];
+  }
+  const missingBatches = [...new Set(test.map((i) => batch[i])
+    .filter((b) => !observed.has(b)))].sort();
+  if (missingBatches.length) return { trainX: null, testX: null, missingBatches };
+  const center = (i) => {
+    const item = observed.get(batch[i]);
+    return X[i].map((v, j) => v - item.sum[j] / item.count);
+  };
+  return { trainX: train.map(center), testX: test.map(center), missingBatches: [] };
+}
+
+export function batchCenteredScorer(ds, k = 20) {
+  return (train, test) => {
+    const c = centerFoldByTrainingBatch(ds.X, ds.batch, train, test);
+    if (c.missingBatches.length) {
+      const err = new Error('Cannot center a held-out batch absent from training: '
+        + c.missingBatches.join(', '));
+      err.code = 'BATCH_NOT_IN_TRAIN';
+      err.batches = c.missingBatches;
+      throw err;
+    }
+    return fitScore(c.trainX, pick(ds.y, train), c.testX, k);
+  };
+}
+
 export function mean(a) { return a.reduce((s, v) => s + v, 0) / a.length; }
 export function quantile(a, q) { const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(q * s.length))]; }
 
@@ -168,19 +208,33 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
       finding: drop >= 0.15 ? `Holding out whole batches drops the score by ${drop.toFixed(2)}. The model depends on having seen the batch.` : 'Holding out whole batches changes the score little.' };
   }
   if (selected.includes('batch_residualized')) {
-    const p = ds.X[0].length, bm = new Map();
-    ds.batch.forEach((b, i) => { const e = bm.get(b) || { c: 0, s: new Float64Array(p) }; e.c++; for (let j = 0; j < p; j++) e.s[j] += ds.X[i][j]; bm.set(b, e); });
-    const Xc = ds.X.map((row, i) => { const e = bm.get(ds.batch[i]); return row.map((v, j) => v - e.s[j] / e.c); });
+    // Restrict the diagnostic to mixed-label batches as before; crucially,
+    // learn every batch mean from the TRAINING fold only, just as feature
+    // selection and LDA are already fitted inside the training fold.
     const keep = ds.batch.map((b, i) => (mixedSet.has(b) ? i : -1)).filter((i) => i >= 0);
-    let a = null;
+    let a = null, unavailable = null;
     if (keep.length >= 10) {
-      const sub = { X: pick(Xc, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
-      a = repeatedCv(sub, modelScorer(sub.X, sub.y, k), { seed: seed + 3 });
+      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
+      try {
+        a = repeatedCv(sub, batchCenteredScorer(sub, k), { seed: seed + 3 });
+      } catch (error) {
+        if (error?.code !== 'BATCH_NOT_IN_TRAIN') throw error;
+        unavailable = error.batches;
+      }
     }
     const survives = a !== null && a >= 0.65;
-    results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized, auc: a, nUsed: keep.length, status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
-      finding: a === null ? 'Too few samples sit in batches with both labels to test this.' : survives ? `With batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Some signal is independent of batch.`
-        : `With batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Little signal remains once batch is gone.` };
+    const finding = a === null
+      ? unavailable
+        ? 'Train-only batch centering is not identifiable: a held-out fold includes batch '
+          + unavailable.join(', ') + ' absent from its training fold.'
+        : 'Too few samples sit in batches with both labels to test this.'
+      : survives
+        ? `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Some signal is independent of batch.`
+        : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Little signal remains once batch is gone.`;
+    results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized,
+      auc: a, nUsed: keep.length, preprocessing: 'training_fold_only',
+      status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
+      finding };
   }
   return { n, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
 }
