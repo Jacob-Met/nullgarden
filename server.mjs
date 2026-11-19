@@ -5,6 +5,7 @@ import { join, dirname, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits } from './src/core.mjs';
 import { SCENARIOS, parseCsv } from './src/data.mjs';
+import { runFamilywiseK } from './src/familywise.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -49,11 +50,13 @@ export function makeServer() {
         else return send(400, { error: 'Unknown scenario.' });
         return send(200, describe(remember(name, ds)));
       }
-      if (req.method === 'POST' && ['/api/run', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
+      if (req.method === 'POST' && ['/api/run', '/api/family', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
         if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));
+        if (url.pathname === '/api/family') return send(200,
+          runFamilywiseK(entry.ds, {ks:b.ks,seed:b.seed,perms:b.perms,stopping:'decision'}));
         if (url.pathname === '/api/propose') {
           const r = await chat(proposePrompt(designTable(entry.ds), String(b.note || '').slice(0, 500)));
           if (!r.ok) return send(200, r);
