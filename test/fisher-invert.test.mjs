@@ -207,6 +207,13 @@ test('cold HTTP locks model and confidence level at dataset intake; report inclu
     return {status:res.status,data:asText?await res.text():await res.json()};
   };
   try{
+    const page=await(await fetch(root+'/')).text();
+    const app=await(await fetch(root+'/app.js')).text();
+    assert.match(page,/id="additiveModel"/);
+    assert.ok(page.indexOf('id="trialEffect"')<page.indexOf('id="verdict"'));
+    assert.ok(app.includes("'/api/trial-confidence'"),
+      'served cold UI must request real exact confidence endpoint');
+    assert.ok(app.includes("effectModel"),'UI must preregister the additive assumption at CSV intake');
     const ds=trial(11,6);
     const request={csv:csv(ds),randomization:ds.randomization,
       trialOutcome:ds.trialOutcome,effectModel:'constant_additive',
