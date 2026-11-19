@@ -43,3 +43,6 @@ jobs:
           console.log(json);
           console.log('report_sha256='+createHash('sha256').update(json).digest('hex'));
           JS
+
+      - name: Frozen 64-orbit donor null and independent positive control
+        run: node research/subject-pseudoreplication-null.mjs
