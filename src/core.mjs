@@ -1,5 +1,6 @@
-import { conditionalOrbitSize, conditionalLabelAssignments } from './exact-orbit.mjs';
-export { conditionalOrbitSize, conditionalLabelAssignments } from './exact-orbit.mjs';
+import { conditionalOrbitSize, conditionalLabelAssignments, conditionalUnits,
+  sampleConditionalLabels } from './exact-orbit.mjs';
+export { conditionalOrbitSize, conditionalLabelAssignments, conditionalUnits, sampleConditionalLabels } from './exact-orbit.mjs';
 // Deterministic core: a small, fully specified pipeline plus the negative controls that run it.
 // Nothing here calls a model. Nemotron proposes which controls to look at; this file executes them.
 
@@ -125,8 +126,17 @@ export function fitScore(Xtr, ytr, Xte, k = 20) {
   });
 }
 
-export function stratifiedFolds(y, k, r) {
+export function stratifiedFolds(y, k, r, subject = null) {
   const folds = Array.from({ length: k }, () => []);
+  if (subject !== null) {
+    const units = conditionalUnits(new Array(y.length).fill('all'), y, subject);
+    for (const cls of [0, 1]) {
+      shuffle(units.filter((u) => u.label === cls), r).forEach((unit, n) => {
+        folds[n % k].push(...unit.indices);
+      });
+    }
+    return folds;
+  }
   for (const cls of [0, 1]) {
     const ids = shuffle(y.map((v, i) => (v === cls ? i : -1)).filter((i) => i >= 0), r);
     ids.forEach((i, n) => folds[n % k].push(i));
@@ -144,6 +154,18 @@ export function batchFolds(batch) {
  * substitute for within-heldout-batch AUC, especially for pure-label batches.
  * Pure groups have no AUROC by definition and are explicitly accounted for.
  */
+// Repeated measurements from one subject contribute one score per fold.
+ // AUC of repeated rows would overweight subjects with more acquisitions.
+export function subjectAuc(scores, labels, subject) {
+  if (subject === null || subject === undefined) return auc(scores, labels);
+  if (scores.length !== labels.length || subject.length !== labels.length) {
+    throw new Error('Subject AUROC requires aligned scores, labels and subject IDs');
+  }
+  const units = conditionalUnits(new Array(labels.length).fill('all'), labels, subject);
+  return auc(units.map((u) => mean(u.indices.map((i) => scores[i]))),
+    units.map((u) => u.label));
+}
+
 export function macroBatchAuc(scores, y, batch) {
   if (scores.length !== y.length || batch.length !== y.length) {
     throw new Error('AUC scores, labels and batch IDs must have equal length');
@@ -187,7 +209,7 @@ export function leaveBatchOutEvaluation(ds, k = 20) {
     const fitted = fitScore(pick(ds.X, train), trainingY, pick(ds.X, test), k);
     fitted.forEach((v, j) => { scores[test[j]] = v; });
     perBatch.push({ batch: ds.batch[test[0]], n: test.length, positives,
-      auc: auc(fitted, pick(ds.y, test)), trainSupported: true });
+      auc: subjectAuc(fitted, pick(ds.y, test), ds.subject ? pick(ds.subject, test) : null), trainSupported: true });
   }
   const valid = perBatch.filter((row) => row.trainSupported && row.auc !== null);
   const nUnsupportedTrain = perBatch.filter((row) => !row.trainSupported).length;
@@ -309,7 +331,9 @@ export function quantile(a, q) { const s = a.slice().sort((x, y) => x - y); retu
 export function designTable(ds) {
   const m = new Map();
   ds.batch.forEach((b, i) => { const e = m.get(b) || { batch: b, n: 0, pos: 0, neg: 0, samples: [] }; e.n++; ds.y[i] ? e.pos++ : e.neg++; e.samples.push({ i, id: ds.ids[i], y: ds.y[i] }); m.set(b, e); });
-  return [...m.values()].map((e) => ({ ...e, mixed: e.pos > 0 && e.neg > 0 }));
+  return [...m.values()].map((e) => ({ ...e,
+    subjects: new Set(e.samples.map((s) => ds.subject ? ds.subject[s.i] : s.id)).size,
+    mixed: e.pos > 0 && e.neg > 0 }));
 }
 
 export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) {
@@ -320,7 +344,7 @@ export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) 
   const r = rng(seed);
   const aucs = [];
   for (let rep = 0; rep < repeats; rep++) {
-    const f = stratifiedFolds(ds.y, folds, r);
+    const f = stratifiedFolds(ds.y, folds, r, ds.subject ?? null);
     // A fold with a missing training class cannot fit the requested
     // binary classifier. Refuse a spurious score instead of the historical
     // all-zero prediction, whose AUROC could be mistaken for evidence.
@@ -347,7 +371,8 @@ export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) 
       // heldout fold is pure. The entire requested repeated-CV estimand
       // abstains rather than silently discarding or inventing those pairs.
       if (!testLabels.includes(0) || !testLabels.includes(1)) return null;
-      const value = auc(scorerFactory(train, test), testLabels);
+      const value = subjectAuc(scorerFactory(train, test), testLabels,
+        ds.subject ? pick(ds.subject, test) : null);
       if (value === null) return null;
       foldAucs.push(value);
     }
@@ -390,13 +415,15 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
     throw new RangeError('Permutation stopping must be fixed or decision with a predeclared budget');
   }
   const n = ds.y.length;
+  const subjects = conditionalUnits(ds.batch, ds.y, ds.subject ?? null);
+  const unitMode = ds.subject ? 'declared_subject_blocks' : 'assumed_independent_rows';
   const table = designTable(ds);
   const mixedSet = new Set(table.filter((t) => t.mixed).map((t) => t.batch));
   const results = {};
   const naive = repeatedCv(ds, modelScorer(ds.X, ds.y, k), { seed });
-  results.naive = { id: 'naive', title: 'Naive random-split CV',
+  results.naive = { id: 'naive', title: ds.subject ? 'Subject-heldout CV' : 'Naive random-split CV',
     question: 'The headline number a shortcut can inflate.', auc: naive,
-    aggregation: 'mean_per_heldout_fold',
+    aggregation: ds.subject ? 'mean_per_heldout_fold_subject_auc' : 'mean_per_heldout_fold',
     status: naive === null ? 'unavailable' : 'baseline',
     finding: naive === null
       ? 'Training folds lose one class; the headline AUC is unidentifiable, not chance performance.'
@@ -422,12 +449,12 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       Math.floor(25000000 / Math.max(1, n * ds.X[0].length * 15)));
     const orbitSize = exactMax >= 1 && naive !== null
       && Number.isInteger(perms) && perms >= 1
-      ? conditionalOrbitSize(ds.batch, ds.y, exactMax) : null;
+      ? conditionalOrbitSize(ds.batch, ds.y, exactMax, ds.subject ?? null) : null;
     if (orbitSize !== null && orbitSize <= exactMax) {
       const nulls = [];
       let observedAllocations = 0;
       for (const labels of conditionalLabelAssignments(ds.batch, ds.y,
-        {maxAssignments: exactMax})) {
+        {maxAssignments: exactMax, subject: ds.subject ?? null})) {
         if (labels.every((label, i) => label === ds.y[i])) observedAllocations++;
         const score = repeatedCv({...ds, y: labels},
           modelScorer(ds.X, labels, k), {seed, repeats: 3});
@@ -440,9 +467,10 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         perms, permsBudget: orbitSize, permsRun: nulls.length,
         orbitSize, pExact: valid, stopping: 'exact',
         statisticRepeats: 3, statisticSeed: seed,
-        statisticAggregation: 'mean_per_heldout_fold',
+        statisticAggregation: ds.subject ? 'mean_per_heldout_fold_subject_auc' : 'mean_per_heldout_fold',
+        unitMode, independentUnits: subjects.length,
         nullSampling: 'complete_batch_conditional_orbit',
-        inferenceLimit: 'Exact enumeration holds feature data, batch memberships and within-batch positive counts fixed and treats every distinct allowed label assignment equally. Validity requires within-batch exchangeability and a predeclared statistic and hypothesis; it does not prove biological causation or correct selection across multiple hypotheses.',
+        inferenceLimit: 'Exact enumeration holds feature data, batch memberships and positive independent-unit counts fixed and treats each permitted within-batch subject-block label assignment equally. Declared subject IDs prohibit splitting repeated measurements; independent subject exchangeability remains an unverified scientific assumption. Without subject IDs, each row is assumed independent. No biological causation or across-hypothesis error control follows.',
       };
       if (!valid) {
         results.within_batch_permutation = {
@@ -479,12 +507,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       if (naive !== null && Number.isInteger(perms) && perms >= 1) {
         let exceedances = 0;
         for (let b = 0; b < perms; b++) {
-          const y2 = ds.y.slice();
-          for (const t of table) {
-            const ids = t.samples.map((s) => s.i);
-            const sh = shuffle(ids.map((i) => ds.y[i]), r);
-            ids.forEach((i, m) => { y2[i] = sh[m]; });
-          }
+          const y2 = sampleConditionalLabels(ds.batch, ds.y, r, ds.subject ?? null);
           const value = repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
             // The observed and shuffled labels share the exact same frozen
             // three-repeat foldwise AUC statistic and CV seed.
@@ -499,7 +522,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         }
       }
       const complete = nulls.length === perms;
-      const inferenceLimit = 'Requires label exchangeability within each batch and a predeclared statistic, seed, permutation budget and hypothesis. Decision stopping within that one fixed budget is anytime-valid for the reported conservative upper p bound; changing the budget, rerunning selected seeds or post-hoc choosing controls is not covered.';
+      const inferenceLimit = 'Requires exchangeable independent subject units within batches. Declared repeated measurements move together; without subject IDs each row is assumed independent, which cannot be verified. This fixed-budget stopping bound does not cover changed budgets, repeated seeds or post-hoc hypothesis selection and does not identify a causal effect.';
       const valid = naive !== null && nulls.length > 0
         && nulls.every((v) => v !== null && Number.isFinite(v))
         && (complete || (stopping === 'decision'
@@ -509,7 +532,8 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         pLower: valid ? prefix.lower : null, pUpper: valid ? prefix.upper : null,
         pExact: valid && complete, stopping,
         statisticRepeats: 3, statisticSeed: seed,
-        statisticAggregation: 'mean_per_heldout_fold',
+        statisticAggregation: ds.subject ? 'mean_per_heldout_fold_subject_auc' : 'mean_per_heldout_fold',
+        unitMode, independentUnits: subjects.length,
         nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
       };
       if (!valid) {
@@ -588,7 +612,8 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
     const keep = ds.batch.map((b, i) => (mixedSet.has(b) ? i : -1)).filter((i) => i >= 0);
     let a = null, unavailable = null;
     if (keep.length >= 10) {
-      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
+      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep),
+        ...(ds.subject ? {subject: pick(ds.subject, keep)} : {}) };
       try {
         a = repeatedCv(sub, batchCenteredScorer(sub, k), { seed: seed + 3 });
       } catch (error) {
@@ -613,7 +638,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       status: a === null ? 'unavailable' : survives ? 'signal' : 'shortcut',
       finding };
   }
-  return { n, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
+  return { n, nSubjects: subjects.length, unitMode, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
 }
 
 export function verdict(res) {
@@ -637,10 +662,14 @@ export function verdict(res) {
 }
 
 export function toMarkdown(name, run, narrative) {
-  const L = [`# NULLGARDEN control report: ${name}`, '', `Verdict: **${run.verdict.label}**. ${run.verdict.text}`, '', `${run.n} samples, ${run.nBatches} batches, ${run.mixedBatches.length} with both labels.`, '',
+  const L = [`# NULLGARDEN control report: ${name}`, '', `Verdict: **${run.verdict.label}**. ${run.verdict.text}`, '', `${run.n} rows, ${run.nSubjects} independent allocation units, ${run.nBatches} batches, ${run.mixedBatches.length} with both labels.`, '',
     '| Control | AUC | Status |', '|---|---|---|'];
   for (const r of Object.values(run.results)) L.push(`| ${r.title} | ${r.auc === null ? 'n/a' : r.auc.toFixed(3)} | ${r.status || 'baseline'} |`);
-  L.push('', '## Cross-validation estimand', '',
+  L.push('', '## Exchangeability and replication', '',
+    run.unitMode === 'declared_subject_blocks'
+      ? 'Subject IDs were supplied: repeated measurements were held out together, averaged to one score per subject within each CV fold, and permuted as indivisible blocks within each batch. Subjects must be independent/exchangeable under the null; that assumption cannot be validated from this CSV.'
+      : 'No subject IDs were supplied. Every row was treated as an independent exchangeable unit; this cannot be verified and will be invalid for repeated donors, paired observations or temporal measurements. Supply a subject_id column to perform blocked inference.',
+    '', '## Cross-validation estimand', '',
     'Random stratified CV reports mean within-fold AUROC: each mixed-label heldout fold is scored separately, then averaged over folds and repeats. Raw prediction ranks from different fitted models must not be pooled; if any requested test fold is pure-label, its AUROC is undefined and the aggregate abstains.', '', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   const permutation = run.results.within_batch_permutation;
