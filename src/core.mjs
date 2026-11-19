@@ -275,8 +275,8 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
           + unavailable.join(', ') + ' absent from its training fold.'
         : 'Too few samples sit in batches with both labels to test this.'
       : survives
-        ? `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Some signal is independent of batch.`
-        : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Little signal remains once batch is gone.`;
+        ? `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination survives this fold-local control, but biological causality is not established.`
+        : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination is weak under this control; this does not establish absence of biological signal.`;
     results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized,
       auc: a, nUsed: keep.length, preprocessing: 'training_fold_only',
       status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
