@@ -537,7 +537,7 @@ export function toMarkdown(name, run, narrative) {
     '| Control | AUC | Status |', '|---|---|---|'];
   for (const r of Object.values(run.results)) L.push(`| ${r.title} | ${r.auc === null ? 'n/a' : r.auc.toFixed(3)} | ${r.status || 'baseline'} |`);
   L.push('', '## Cross-validation estimand', '',
-    'Random stratified CV reports the mean AUROC evaluated separately within each mixed-label heldout fold, averaged over repeats. Raw prediction ranks from different fitted models must not be pooled; if any requested test fold is pure-label, its AUROC is undefined and the aggregate abstains.', '', '## Findings');
+    'Random stratified CV reports mean within-fold AUROC: each mixed-label heldout fold is scored separately, then averaged over folds and repeats. Raw prediction ranks from different fitted models must not be pooled; if any requested test fold is pure-label, its AUROC is undefined and the aggregate abstains.', '', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   const permutation = run.results.within_batch_permutation;
   if (permutation) L.push('', '## Permutation inference limits', '',
