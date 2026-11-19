@@ -344,7 +344,10 @@ export function quantile(a, q) { const s = a.slice().sort((x, y) => x - y); retu
 export function designTable(ds) {
   const m = new Map();
   ds.batch.forEach((b, i) => { const e = m.get(b) || { batch: b, n: 0, pos: 0, neg: 0, samples: [] }; e.n++; ds.y[i] ? e.pos++ : e.neg++; e.samples.push({ i, id: ds.ids[i], y: ds.y[i] }); m.set(b, e); });
-  return [...m.values()].map((e) => ({ ...e, mixed: e.pos > 0 && e.neg > 0 }));
+  return [...m.values()].map((e) => ({
+    ...e, nUnits: new Set(e.samples.map(row => ds.unit?.[row.i] ?? row.i)).size,
+    mixed: e.pos > 0 && e.neg > 0,
+  }));
 }
 
 export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) {
@@ -428,23 +431,31 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
     throw new RangeError('Permutation stopping must be fixed or decision with a predeclared budget');
   }
   const n = ds.y.length;
+  const permutationUnits = unitPermutationDesign(ds);
+  const nUnits = permutationUnits.groups.length;
+  const permutationBlocks = new Map();
+  for (const group of permutationUnits.groups) {
+    if (!permutationBlocks.has(group.batch)) permutationBlocks.set(group.batch, []);
+    permutationBlocks.get(group.batch).push(group);
+  }
   const table = designTable(ds);
   const mixedSet = new Set(table.filter((t) => t.mixed).map((t) => t.batch));
   const results = {};
   const naive = repeatedCv(ds, modelScorer(ds.X, ds.y, k), { seed });
   results.naive = { id: 'naive', title: 'Naive random-split CV',
     question: 'The headline number a shortcut can inflate.', auc: naive,
-    aggregation: 'mean_per_heldout_fold',
+    aggregation: ds.unit ? 'mean_per_heldout_fold_and_unit' : 'mean_per_heldout_fold',
     status: naive === null ? 'unavailable' : 'baseline',
     finding: naive === null
       ? 'Training folds lose one class; the headline AUC is unidentifiable, not chance performance.'
       : undefined };
   if (selected.includes('batch_only')) {
-    const a = repeatedCv(ds, batchPrevalenceScorer(ds.batch, ds.y), { seed: seed + 1 });
+    const a = repeatedCv(ds, batchPrevalenceScorer(ds.batch, ds.y, ds.unit), { seed: seed + 1 });
     const identifiable = a !== null && naive !== null;
     const same = identifiable && a >= naive - 0.05;
     results.batch_only = { id: 'batch_only', ...CONTROLS.batch_only,
-      auc: identifiable ? a : null, aggregation: 'mean_per_heldout_fold',
+      auc: identifiable ? a : null,
+      aggregation: ds.unit ? 'mean_per_heldout_fold_and_unit' : 'mean_per_heldout_fold',
       status: identifiable ? (same ? 'shortcut' : 'neutral') : 'unavailable',
       finding: !identifiable
         ? 'Class support in at least one training fold is insufficient for a batch-only comparison.'
@@ -460,13 +471,14 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       Math.floor(25000000 / Math.max(1, n * ds.X[0].length * 15)));
     const orbitSize = exactMax >= 1 && naive !== null
       && Number.isInteger(perms) && perms >= 1
-      ? conditionalOrbitSize(ds.batch, ds.y, exactMax) : null;
+      ? conditionalOrbitSize(permutationUnits.batch, permutationUnits.y, exactMax) : null;
     if (orbitSize !== null && orbitSize <= exactMax) {
       const nulls = [];
       let observedAllocations = 0;
-      for (const labels of conditionalLabelAssignments(ds.batch, ds.y,
-        {maxAssignments: exactMax})) {
-        if (labels.every((label, i) => label === ds.y[i])) observedAllocations++;
+      for (const unitLabels of conditionalLabelAssignments(
+        permutationUnits.batch, permutationUnits.y, {maxAssignments: exactMax})) {
+        if (unitLabels.every((label, i) => label === permutationUnits.y[i])) observedAllocations++;
+        const labels = permutationUnits.expand(unitLabels);
         const score = repeatedCv({...ds, y: labels},
           modelScorer(ds.X, labels, k), {seed, repeats: 3});
         nulls.push(score);
@@ -477,6 +489,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       const metadata = {
         perms, permsBudget: orbitSize, permsRun: nulls.length,
         orbitSize, pExact: valid, stopping: 'exact',
+        permutationUnit: ds.unit ? 'unit' : 'sample', nUnits,
         statisticRepeats: 3, statisticSeed: seed,
         statisticAggregation: 'mean_per_heldout_fold',
         nullSampling: 'complete_batch_conditional_orbit',
@@ -518,10 +531,11 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         let exceedances = 0;
         for (let b = 0; b < perms; b++) {
           const y2 = ds.y.slice();
-          for (const t of table) {
-            const ids = t.samples.map((s) => s.i);
-            const sh = shuffle(ids.map((i) => ds.y[i]), r);
-            ids.forEach((i, m) => { y2[i] = sh[m]; });
+          for (const blocks of permutationBlocks.values()) {
+            const relabeled = shuffle(blocks.map((g) => g.label), r);
+            blocks.forEach((group, j) => {
+              for (const i of group.indices) y2[i] = relabeled[j];
+            });
           }
           const value = repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
             // The observed and shuffled labels share the exact same frozen
@@ -546,6 +560,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         perms, permsBudget: perms, permsRun: nulls.length,
         pLower: valid ? prefix.lower : null, pUpper: valid ? prefix.upper : null,
         pExact: valid && complete, stopping,
+        permutationUnit: ds.unit ? 'unit' : 'sample', nUnits,
         statisticRepeats: 3, statisticSeed: seed,
         statisticAggregation: 'mean_per_heldout_fold',
         nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
