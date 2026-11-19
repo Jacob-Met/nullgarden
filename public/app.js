@@ -29,7 +29,10 @@ function loadScenario(id) {
 }
 
 function drawBeds() {
-  $('#plateCap').textContent = `${ds.name}: ${ds.n} samples, ${ds.features} features. Each column is a batch. Filled dot = label 1, ring = label 0.`;
+  const unitsNote = ds.permutationUnit === 'unit'
+    ? ` ${ds.nUnits} independent units; replicates stay together across CV and permutation.`
+    : '';
+  $('#plateCap').textContent = `${ds.name}: ${ds.n} samples, ${ds.features} features.${unitsNote} Each column is a batch. Filled dot = label 1, ring = label 0.`;
   $('#beds').innerHTML = ds.design.map((b) => `<div class="bed ${b.mixed ? 'mixed' : ''}" style="--n:${b.n}"><div class="dots" role="img" aria-label="Batch ${esc(b.batch)}: ${b.pos} label 1, ${b.neg} label 0">${b.samples.map((s) => `<i class="d ${s.y ? 'p' : 'n'}"></i>`).join('')}</div><div class="bed-l"><b>Batch ${esc(b.batch)}</b>${b.pos} / ${b.neg} <span class="tag">${b.mixed ? 'mixed' : 'pure'}</span></div></div>`).join('');
 }
 
