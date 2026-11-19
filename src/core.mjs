@@ -383,8 +383,12 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
           const sh = shuffle(ids.map((i) => ds.y[i]), r);
           ids.forEach((i, m) => { y2[i] = sh[m]; });
         }
+        // The null and observed statistic must be the EXACT same estimator:
+        // same seeded fold generator and three repetitions. Changing repeat
+        // count or seed for null labels compares different random variables,
+        // and can make unchanged labels look significant.
         nulls.push(repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
-          { seed: seed + 100 + b, repeats: 1 }));
+          { seed, repeats: 3, folds: 5 }));
       }
     }
     const valid = naive !== null && nulls.length === perms
@@ -403,13 +407,14 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         ...CONTROLS.within_batch_permutation, auc: nullMean,
         nullMean, nullLo: quantile(nulls, 0.025),
         nullHi: quantile(nulls, 0.975), p, perms,
-        status: beats ? 'signal' : 'shortcut',
+        statistic: { seed, folds: 5, repeats: 3 },
+        status: beats ? 'signal' : 'inconclusive',
         finding: beats
           ? 'The observed score is above the batch-preserving null (p = '
             + p.toFixed(3) + '), so some of it depends on which sample carries which label inside a batch.'
           : 'Shuffled labels reach a mean AUC of ' + nullMean.toFixed(2)
             + ' and the observed score is not distinguishable from that null (p = '
-            + p.toFixed(3) + '). The batch structure alone explains it.' };
+            + p.toFixed(3) + '). This does not prove no signal, nor identify batch structure as the cause.' };
     }
   }
   if (selected.includes('leave_batch_out')) {
@@ -481,8 +486,9 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
 }
 
 export function verdict(res) {
-  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut')
-    || (res.within_batch_permutation?.status === 'shortcut');
+  // A non-significant permutation test cannot affirmatively establish a
+  // batch shortcut: only the controls that measure batch dependence do so.
+  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut');
   // One favorable control is useful evidence, not independent corroboration:
   // absolute residualized AUC alone is not a permutation-test p-value, and
   // permutation significance alone does not verify a corrected batch pathway.
