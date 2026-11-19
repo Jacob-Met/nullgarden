@@ -384,14 +384,24 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
           ids.forEach((i, m) => { y2[i] = sh[m]; });
         }
         nulls.push(repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
-          { seed: seed + 100 + b, repeats: 1 }));
+          // All permutations must evaluate the SAME preregistered statistic as
+          // the observed sample. A one-repeat/null vs three-repeat/observed
+          // comparison (or a different fold seed for each shuffle) is not a
+          // valid conditional permutation test of that statistic.
+          { seed, repeats: 3 }));
       }
     }
+    // The within-batch conditional randomization null assumes label
+    // exchangeability INSIDE each batch. Fix the CV randomness and repeat
+    // count before inspecting any shuffle; retain exact finite-MC (1+ge)/(1+B).
+    const inferenceLimit = 'Requires label exchangeability within each batch and a fixed, predeclared statistic, seed and permutation budget. Repeated peeking, changing seeds, or post-hoc selecting controls is not covered by this p-value.';
     const valid = naive !== null && nulls.length === perms
       && perms > 0 && nulls.every((v) => v !== null && Number.isFinite(v));
     if (!valid) {
       results.within_batch_permutation = { id: 'within_batch_permutation',
         ...CONTROLS.within_batch_permutation, auc: null, p: null, perms,
+        statisticRepeats: 3, statisticSeed: seed,
+        nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
         status: 'unavailable',
         finding: 'A valid permutation p-value requires identifiable two-class training folds for the observation and every shuffled-label run.' };
     } else {
@@ -403,13 +413,17 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         ...CONTROLS.within_batch_permutation, auc: nullMean,
         nullMean, nullLo: quantile(nulls, 0.025),
         nullHi: quantile(nulls, 0.975), p, perms,
-        status: beats ? 'signal' : 'shortcut',
+        statisticRepeats: 3, statisticSeed: seed,
+        nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
+        // Nonrejection is not evidence FOR a batch-only explanation.
+        // Only the positive shortcut controls below can support that claim.
+        status: beats ? 'signal' : 'neutral',
         finding: beats
           ? 'The observed score is above the batch-preserving null (p = '
             + p.toFixed(3) + '), so some of it depends on which sample carries which label inside a batch.'
           : 'Shuffled labels reach a mean AUC of ' + nullMean.toFixed(2)
-            + ' and the observed score is not distinguishable from that null (p = '
-            + p.toFixed(3) + '). The batch structure alone explains it.' };
+            + ' and the observed score is not distinguishable from that conditional null (p = '
+            + p.toFixed(3) + '). This does not prove that batch structure fully explains the score.' };
     }
   }
   if (selected.includes('leave_batch_out')) {
@@ -481,8 +495,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
 }
 
 export function verdict(res) {
-  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut')
-    || (res.within_batch_permutation?.status === 'shortcut');
+  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut');
   // One favorable control is useful evidence, not independent corroboration:
   // absolute residualized AUC alone is not a permutation-test p-value, and
   // permutation significance alone does not verify a corrected batch pathway.
@@ -494,7 +507,7 @@ export function verdict(res) {
   if (!ran) return { id: 'unrun', label: 'No controls run', text: 'Select at least one control.' };
   if (shortcut && !signal) return { id: 'shortcut', label: 'Mostly shortcut', text: partialSignal
     ? 'A shortcut was detected. One within-batch signal control is favorable, but the independent second control has not corroborated it.'
-    : 'The headline score is explained by batch structure. The controls found no corroborated within-batch signal.' };
+    : 'Batch-only or batch-transfer controls indicate shortcut sensitivity. No corroborated within-batch signal was established; absence of significance is not proof of no signal.' };
   if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Both independent within-batch signal controls are favorable, while batch structure also explains part of the headline score. Report the controlled number, not the naive one.' };
   if (signal) return { id: 'signal', label: 'Signal holds up', text: 'Both the batch-preserving permutation null and train-fold-only batch centering support within-batch discrimination. This is evidence, not proof of biological causality.' };
   if (partialSignal) return { id: 'open', label: 'Incomplete evidence', text: 'Only one signal control is favorable; both the batch-preserving permutation null and training-fold batch centering must support a result before calling it robust.' };
@@ -507,6 +520,10 @@ export function toMarkdown(name, run, narrative) {
   for (const r of Object.values(run.results)) L.push(`| ${r.title} | ${r.auc === null ? 'n/a' : r.auc.toFixed(3)} | ${r.status || 'baseline'} |`);
   L.push('', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
+  const permutation = run.results.within_batch_permutation;
+  if (permutation) L.push('', '## Permutation inference limits', '',
+    permutation.inferenceLimit,
+    `Statistic: ${permutation.statisticRepeats} CV repeats, seed ${permutation.statisticSeed}; ${permutation.perms} within-batch permutations (fixed budget). The permutation null uses the same statistic and CV randomization as the observed dataset.`);
   if (narrative) L.push('', '## Nemotron explanation (figures checked against the table above)', '', narrative);
   L.push('', '## Corrected evaluation candidate', '', 'Report mean per-mixed-heldout-batch AUC (pure-label heldouts excluded; at least two mixed groups needed) and training-fold-only batch-centered AUC next to the batch-only baseline. Scores pooled across separately fitted heldout-batch models are only diagnostic, not cross-batch discrimination evidence. Treat only the amount above the within-batch permutation null as tentative evidence of learned signal.');
   return L.join('\n') + '\n';
