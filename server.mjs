@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { runControls, CONTROLS, designTable, toMarkdown } from './src/core.mjs';
+import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits } from './src/core.mjs';
 import { SCENARIOS, parseCsv } from './src/data.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
 
@@ -19,7 +19,10 @@ function remember(name, ds) {
 }
 function describe(id) {
   const { name, ds } = store.get(id);
-  return { datasetId: id, name, n: ds.y.length, features: ds.features.length, design: designTable(ds), model: MODEL };
+  const units = conditionalUnits(ds.batch, ds.y, ds.subject ?? null);
+  return { datasetId: id, name, n: ds.y.length, nSubjects: units.length,
+    subjectMode: ds.subject ? 'declared_subject_blocks' : 'assumed_independent_rows',
+    features: ds.features.length, design: designTable(ds), model: MODEL };
 }
 async function body(req, limit = 6e6) {
   let size = 0; const chunks = [];
