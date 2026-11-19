@@ -15,6 +15,9 @@ stopifnot(is.matrix(expr), ncol(expr)==57, nrow(pheno)==57,
           all(c("batch","cancer","sample","outcome") %in% names(pheno)),
           all(is.finite(expr)))
 label_values <- sort(unique(as.character(pheno$cancer)))
+cat("observed_original_cancer_values=",paste(label_values,collapse="|"),"\n",sep="")
+cat("observed_original_cancer_counts=",paste(capture.output(print(table(pheno$cancer,useNA="ifany"))),collapse="; "), "\n",sep="")
+cat("observed_original_outcome_counts=",paste(capture.output(print(table(pheno$outcome,useNA="ifany"))),collapse="; "), "\n",sep="")
 if (length(label_values)!=2 || anyNA(label_values) || any(!nzchar(label_values)))
   stop("Expected two nonempty cancer factor groups")
 binary <- as.integer(match(as.character(pheno$cancer), label_values)-1L)
