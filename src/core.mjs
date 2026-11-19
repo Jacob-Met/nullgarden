@@ -21,7 +21,17 @@ export function shuffle(arr, r) {
   return a;
 }
 
+function numericalFailure(detail) {
+  const error = new RangeError('Unrepresentable normalized range: ' + detail
+    + '. Rescale measurements or exclude this unsupported magnitude.');
+  error.code = 'NUMERIC_RANGE_UNSUPPORTED';
+  return error;
+}
+
 export function auc(scores, y) {
+  if (scores.length !== y.length || scores.some((s) => !Number.isFinite(s))) {
+    throw new RangeError('AUROC requires matching labels and non-finite-free evidence scores');
+  }
   const idx = scores.map((s, i) => i).sort((a, b) => scores[a] - scores[b]);
   let nPos = 0, rankSum = 0;
   for (let i = 0; i < idx.length; ) {
@@ -36,26 +46,76 @@ export function auc(scores, y) {
   return (rankSum - (nPos * (nPos + 1)) / 2) / (nPos * nNeg);
 }
 
-// The pipeline under test: top-k feature selection by |t|, then diagonal-LDA scoring.
-// Selection happens inside every training fold, as it must.
+// The pipeline under test: top-k feature selection by |t|, then diagonal-LDA.
+// Every feature is normalized by its max absolute TRAINING-fold observation,
+// before class moments and variance are fitted. This makes the regularizer
+// dimensionless and prevents overflow for finite but large measurements,
+// while leaving both selection and normalization independent of heldout rows.
 export function fitScore(Xtr, ytr, Xte, k = 20) {
+  if (!Array.isArray(Xtr) || !Xtr.length || !Array.isArray(ytr)
+      || Xtr.length !== ytr.length || !Array.isArray(Xte)) {
+    throw new TypeError('fitScore requires aligned nonempty training and test matrices');
+  }
   const p = Xtr[0].length;
+  if (!Number.isInteger(p) || p < 1 || !Number.isInteger(k) || k < 1) {
+    throw new TypeError('fitScore requires positive feature count and top-k');
+  }
+  const scales = new Float64Array(p);
+  for (const [i, x] of Xtr.entries()) {
+    if (!Array.isArray(x) || x.length !== p || ![0, 1].includes(ytr[i])) {
+      throw new TypeError('fitScore training matrix or labels are malformed');
+    }
+    for (let j = 0; j < p; j++) {
+      if (!Number.isFinite(x[j])) throw numericalFailure('non-finite training feature ' + j);
+      scales[j] = Math.max(scales[j], Math.abs(x[j]));
+    }
+  }
+  for (let j = 0; j < p; j++) if (scales[j] === 0) scales[j] = 1;
+  for (const x of Xte) {
+    if (!Array.isArray(x) || x.length !== p || !x.every(Number.isFinite)) {
+      throw numericalFailure('non-finite or malformed heldout feature vector');
+    }
+  }
   const n1 = ytr.filter((v) => v === 1).length, n0 = ytr.length - n1;
   if (n1 === 0 || n0 === 0) return Xte.map(() => 0);
-  const mu1 = new Float64Array(p), mu0 = new Float64Array(p), v = new Float64Array(p);
-  for (let i = 0; i < Xtr.length; i++) for (let j = 0; j < p; j++) (ytr[i] ? mu1 : mu0)[j] += Xtr[i][j];
+
+  const mu1 = new Float64Array(p), mu0 = new Float64Array(p),
+    variance = new Float64Array(p);
+  for (let i = 0; i < Xtr.length; i++) {
+    for (let j = 0; j < p; j++) {
+      (ytr[i] ? mu1 : mu0)[j] += Xtr[i][j] / scales[j];
+    }
+  }
   for (let j = 0; j < p; j++) { mu1[j] /= n1; mu0[j] /= n0; }
-  for (let i = 0; i < Xtr.length; i++) for (let j = 0; j < p; j++) {
-    const d = Xtr[i][j] - (ytr[i] ? mu1[j] : mu0[j]); v[j] += d * d;
+  for (let i = 0; i < Xtr.length; i++) {
+    for (let j = 0; j < p; j++) {
+      const d = Xtr[i][j] / scales[j] - (ytr[i] ? mu1[j] : mu0[j]);
+      variance[j] += d * d;
+    }
   }
   const t = [];
   for (let j = 0; j < p; j++) {
-    const s2 = v[j] / Math.max(1, Xtr.length - 2) + 1e-9;
-    t.push({ j, t: (mu1[j] - mu0[j]) / Math.sqrt(s2 * (1 / n1 + 1 / n0)), s2 });
+    const s2 = variance[j] / Math.max(1, Xtr.length - 2) + 1e-9;
+    const difference = mu1[j] - mu0[j];
+    const statistic = difference / Math.sqrt(s2 * (1 / n1 + 1 / n0));
+    if (!Number.isFinite(statistic)) throw numericalFailure('feature ' + j + ' statistic');
+    t.push({ j, t: statistic, difference, midpoint: (mu1[j] + mu0[j]) / 2,
+      weight: difference / s2 });
   }
-  t.sort((a, b) => Math.abs(b.t) - Math.abs(a.t));
+  t.sort((a, b) => Math.abs(b.t) - Math.abs(a.t) || a.j - b.j);
   const top = t.slice(0, Math.min(k, p));
-  return Xte.map((x) => top.reduce((s, f) => s + ((mu1[f.j] - mu0[f.j]) / f.s2) * (x[f.j] - (mu1[f.j] + mu0[f.j]) / 2), 0));
+  return Xte.map((x) => {
+    let score = 0;
+    for (const feature of top) {
+      if (feature.weight === 0) continue; // constant feature is strictly neutral.
+      const centered = x[feature.j] / scales[feature.j] - feature.midpoint;
+      const term = feature.weight * centered;
+      if (!Number.isFinite(term)) throw numericalFailure('heldout feature ' + feature.j);
+      score += term;
+      if (!Number.isFinite(score)) throw numericalFailure('heldout discriminant sum');
+    }
+    return score;
+  });
 }
 
 export function stratifiedFolds(y, k, r) {
