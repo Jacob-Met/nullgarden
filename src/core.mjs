@@ -200,21 +200,49 @@ function batchPrevalenceScorer(batch, y) {
 export function centerFoldByTrainingBatch(X, batch, train, test) {
   const p = X[0].length;
   const observed = new Map();
+  // Accumulate training-batch normalized moments. Raw sums can exceed the
+  // finite IEEE range even when each measurement and batch mean is finite.
+  // The first pass learns scales from TRAINING rows only, preventing leakage.
   for (const i of train) {
     let item = observed.get(batch[i]);
     if (!item) {
-      item = { sum: new Float64Array(p), count: 0 };
+      item = { scale: new Float64Array(p), sum: new Float64Array(p), count: 0 };
       observed.set(batch[i], item);
     }
     item.count++;
-    for (let j = 0; j < p; j++) item.sum[j] += X[i][j];
+    for (let j = 0; j < p; j++) {
+      const value = X[i][j];
+      if (!Number.isFinite(value)) throw numericalFailure('batch training feature ' + j);
+      item.scale[j] = Math.max(item.scale[j], Math.abs(value));
+    }
   }
   const missingBatches = [...new Set(test.map((i) => batch[i])
     .filter((b) => !observed.has(b)))].sort();
   if (missingBatches.length) return { trainX: null, testX: null, missingBatches };
+  for (const item of observed.values()) {
+    for (let j = 0; j < p; j++) if (item.scale[j] === 0) item.scale[j] = 1;
+  }
+  for (const i of train) {
+    const item = observed.get(batch[i]);
+    for (let j = 0; j < p; j++) item.sum[j] += X[i][j] / item.scale[j];
+  }
   const center = (i) => {
     const item = observed.get(batch[i]);
-    return X[i].map((v, j) => v - item.sum[j] / item.count);
+    return X[i].map((value, j) => {
+      if (!Number.isFinite(value)) throw numericalFailure('batch heldout feature ' + j);
+      const normalized = value / item.scale[j] - item.sum[j] / item.count;
+      // The result can legitimately be unrepresentable for a finite but
+      // enormous heldout-to-training ratio. Reject instead of contaminating
+      // the downstream feature selection with Infinity.
+      if (!Number.isFinite(normalized)) {
+        throw numericalFailure('batch-heldout normalized range feature ' + j);
+      }
+      const corrected = normalized * item.scale[j];
+      if (!Number.isFinite(corrected)) {
+        throw numericalFailure('batch-heldout centered feature ' + j);
+      }
+      return corrected;
+    });
   };
   return { trainX: train.map(center), testX: test.map(center), missingBatches: [] };
 }
