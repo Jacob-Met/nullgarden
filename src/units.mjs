@@ -75,3 +75,46 @@ export function unitPermutationDesign(ds) {
     },
   };
 }
+
+/** Training-only independent-unit feature representation.
+ * Each independent unit contributes exactly one feature vector regardless
+ * of how many technical replicates it carries. Per-coordinate max scaling
+ * prevents intermediate sums from overflowing on finite extreme inputs.
+ */
+export function independentFeatureRows(X, y, unit, batch, indices) {
+  if (!unit) return indices.map(i => ({
+    id:i, label:y[i], batch:batch?.[i], x:X[i], indices:[i],
+  }));
+  const map = new Map();
+  for(const i of indices){
+    const key=unit[i];
+    let group=map.get(key);
+    if(!group){
+      group={id:key,label:y[i],batch:batch?.[i],indices:[],x:null};
+      map.set(key,group);
+    } else if(group.label!==y[i] || group.batch!==batch?.[i]){
+      throw new Error('One independent unit has inconsistent labels or batches in training features: '+key);
+    }
+    group.indices.push(i);
+  }
+  const p=X[indices[0]]?.length;
+  if (!Number.isInteger(p) || p < 1) throw new TypeError('Independent-unit feature matrix is empty');
+  for (const group of map.values()) {
+    group.x=new Array(p);
+    for(let j=0;j<p;j++){
+      let scale=0;
+      for(const i of group.indices) {
+        const v=X[i][j];
+        if(!Number.isFinite(v)) throw new RangeError('Independent-unit feature must be finite at '+group.id+' feature '+j);
+        scale=Math.max(scale,Math.abs(v));
+      }
+      if(scale===0){group.x[j]=0;continue;}
+      let sum=0;
+      for(const i of group.indices) sum+=X[i][j]/scale;
+      const value=(sum/group.indices.length)*scale;
+      if(!Number.isFinite(value))throw new RangeError('Independent-unit feature mean unrepresentable at '+group.id+' feature '+j);
+      group.x[j]=value;
+    }
+  }
+  return [...map.values()];
+}
