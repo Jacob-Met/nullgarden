@@ -415,7 +415,9 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         nullHi: quantile(nulls, 0.975), p, perms,
         statisticRepeats: 3, statisticSeed: seed,
         nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
-        status: beats ? 'signal' : 'shortcut',
+        // Nonrejection is not evidence FOR a batch-only explanation.
+        // Only the positive shortcut controls below can support that claim.
+        status: beats ? 'signal' : 'neutral',
         finding: beats
           ? 'The observed score is above the batch-preserving null (p = '
             + p.toFixed(3) + '), so some of it depends on which sample carries which label inside a batch.'
@@ -493,8 +495,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
 }
 
 export function verdict(res) {
-  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut')
-    || (res.within_batch_permutation?.status === 'shortcut');
+  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut');
   // One favorable control is useful evidence, not independent corroboration:
   // absolute residualized AUC alone is not a permutation-test p-value, and
   // permutation significance alone does not verify a corrected batch pathway.
@@ -506,7 +507,7 @@ export function verdict(res) {
   if (!ran) return { id: 'unrun', label: 'No controls run', text: 'Select at least one control.' };
   if (shortcut && !signal) return { id: 'shortcut', label: 'Mostly shortcut', text: partialSignal
     ? 'A shortcut was detected. One within-batch signal control is favorable, but the independent second control has not corroborated it.'
-    : 'The headline score is explained by batch structure. The controls found no corroborated within-batch signal.' };
+    : 'Batch-only or batch-transfer controls indicate shortcut sensitivity. No corroborated within-batch signal was established; absence of significance is not proof of no signal.' };
   if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Both independent within-batch signal controls are favorable, while batch structure also explains part of the headline score. Report the controlled number, not the naive one.' };
   if (signal) return { id: 'signal', label: 'Signal holds up', text: 'Both the batch-preserving permutation null and train-fold-only batch centering support within-batch discrimination. This is evidence, not proof of biological causality.' };
   if (partialSignal) return { id: 'open', label: 'Incomplete evidence', text: 'Only one signal control is favorable; both the batch-preserving permutation null and training-fold batch centering must support a result before calling it robust.' };
