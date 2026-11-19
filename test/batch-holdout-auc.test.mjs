@@ -49,6 +49,8 @@ test('all pure heldout groups must not be reported as a valid AUROC', () => {
   const result=runControls(ds,['leave_batch_out'],{seed:20261030,perms:10,k:2});
   assert.equal(result.results.leave_batch_out.auc, null);
   assert.equal(result.results.leave_batch_out.nMixedHeldout, 0);
-  assert.equal(result.results.leave_batch_out.status, 'neutral');
+  assert.equal(result.results.leave_batch_out.status, 'unavailable');
+  assert.equal(result.results.leave_batch_out.nUnsupportedTrain, 2);
+  assert.match(result.results.leave_batch_out.finding, /single-class training/i);
   assert.notEqual(result.verdict.id, 'signal');
 });

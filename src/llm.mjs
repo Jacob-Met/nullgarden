@@ -49,10 +49,20 @@ export function validateProposal(obj) {
 }
 
 export function explainPrompt(run) {
-  const lines = Object.values(run.results).map((r) => `${r.id}: AUC=${r.auc === null ? 'n/a' : r.auc.toFixed(2)}${r.p !== undefined ? ` p=${r.p.toFixed(3)} null_mean=${r.nullMean.toFixed(2)}` : ''}${r.status ? ` status=${r.status}` : ''}`).join('\n');
+  const lines = Object.values(run.results).map((r) => {
+    const value = r.auc === null ? 'n/a' : r.auc.toFixed(2);
+    const probability = Number.isFinite(r.p) && Number.isFinite(r.nullMean)
+      ? ' p=' + r.p.toFixed(3) + ' null_mean=' + r.nullMean.toFixed(2)
+      : r.p === null ? ' p=unavailable' : '';
+    return r.id + ': AUC=' + value + probability
+      + (r.status ? ' status=' + r.status : '')
+      + (r.finding ? ' reason=' + r.finding : '');
+  }).join('\n');
   return [
-    { role: 'system', content: 'You explain machine-learning evaluation results to a bench scientist in plain English. Use only the numbers given. Round to two decimals. No hype.' },
-    { role: 'user', content: `Results of negative controls on one classifier:\n${lines}\nVerdict from the deterministic rules: ${run.verdict.label}.\n\nIn at most 120 words: say what the model learned and what it merely exploited, quoting the figures, then one concrete next step.` },
+    { role: 'system', content: 'Explain machine-learning evidence to a bench scientist. Use only supplied computed figures. Missing AUC or p-values mean no test was possible; never reinterpret null as zero or describe a model as learning signal from unavailable controls. If the scientific verdict is inconclusive, state it explicitly. No hype.' },
+    { role: 'user', content: 'Results of negative controls on one classifier:\n'
+      + lines + '\nVerdict from the deterministic rules: ' + run.verdict.label
+      + '.\n\nIn at most 120 words: distinguish supported evidence from unavailable tests. If all critical tests are unavailable, do not claim the model learned or exploited anything; explain how to obtain enough mixed-class samples. Otherwise explain the computed control evidence, quote only real figures and provide a next step.' },
   ];
 }
 

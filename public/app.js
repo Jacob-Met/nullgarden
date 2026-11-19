@@ -50,7 +50,8 @@ function drawOut() {
   $('#verdict').className = 'verdict ' + v.id;
   $('#verdict').innerHTML = `<b>${esc(v.label)}</b><span>${esc(v.text)}</span>`;
   const rs = Object.values(run.results);
-  $('#ladder').style.setProperty('--naive-pos', pos(run.results.naive.auc));
+  $('#ladder').classList.toggle('no-baseline', run.results.naive.auc === null);
+  if (run.results.naive.auc !== null) $('#ladder').style.setProperty('--naive-pos', pos(run.results.naive.auc));
   $('#ladder').innerHTML = rs.map((r) => {
     const band = r.nullLo !== undefined ? `<span class="band" style="left:${pos(r.nullLo) * 100}%;width:${(pos(r.nullHi) - pos(r.nullLo)) * 100}%" title="95% of shuffled-label runs fall here"></span>` : '';
     const pt = r.auc === null ? '' : `<span class="pt ${r.id === 'naive' ? 'naive' : r.status || ''}" style="left:${pos(r.auc) * 100}%"></span>`;
@@ -81,7 +82,15 @@ function markHypotheses() {
     const r = run.results[li.dataset.c]; const chip = li.querySelector('.chip');
     if (!r) { chip.className = 'chip'; chip.textContent = `tests: ${status.controls[li.dataset.c].title} (not selected)`; return; }
     chip.className = 'chip ' + r.status;
-    chip.textContent = r.status === 'shortcut' ? `Supported: ${r.title} flags it (AUC ${r.auc.toFixed(2)})` : r.status === 'signal' ? `Not supported: ${r.title} found signal (AUC ${r.auc.toFixed(2)})` : `Not supported: ${r.title} (AUC ${r.auc === null ? 'n/a' : r.auc.toFixed(2)})`;
+    if (r.status === 'unavailable') {
+      chip.textContent = `Not testable: ${r.title} (insufficient class support; no evidence either way)`;
+    } else if (r.status === 'shortcut') {
+      chip.textContent = `Supported: ${r.title} flags it (AUC ${r.auc.toFixed(2)})`;
+    } else if (r.status === 'signal') {
+      chip.textContent = `Not supported: ${r.title} found signal (AUC ${r.auc.toFixed(2)})`;
+    } else {
+      chip.textContent = `Inconclusive: ${r.title} (AUC ${r.auc === null ? 'n/a' : r.auc.toFixed(2)})`;
+    }
   });
 }
 

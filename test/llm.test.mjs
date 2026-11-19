@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chat, extractJson, validateProposal, checkFigures, proposePrompt } from '../src/llm.mjs';
+import { chat, extractJson, validateProposal, checkFigures, proposePrompt, explainPrompt } from '../src/llm.mjs';
 import { runControls } from '../src/core.mjs';
 import { SCENARIOS } from '../src/data.mjs';
 
@@ -38,4 +38,22 @@ test('figure check flags numbers the controls never produced', () => {
   const a = run.results.naive.auc.toFixed(2);
   const c = checkFigures(`AUC was ${a} and also 0.123 somewhere`, run);
   assert.equal(c.total, 2); assert.equal(c.matched, 1); assert.deepEqual(c.unmatched, [0.123]);
+});
+
+test('explanation of unidentifiable CV never dereferences a null permutation p-value', () => {
+  const ds = {
+    ids: Array.from({ length: 12 }, (_, i) => 's' + i),
+    y: Array.from({ length: 12 }, (_, i) => i === 0 ? 1 : 0),
+    batch: Array.from({ length: 12 }, (_, i) => 'B' + (i % 3)),
+    X: Array.from({ length: 12 }, (_, i) => [i, i / 10]),
+  };
+  const run = runControls(ds, undefined, { seed: 20261030, perms: 20, k: 2 });
+  assert.equal(run.results.within_batch_permutation.p, null);
+  const prompts = explainPrompt(run);
+  assert.ok(Array.isArray(prompts));
+  assert.match(prompts[1].content, /p=unavailable/i);
+  assert.match(prompts[1].content, /class|unidentifiable/i);
+  assert.doesNotMatch(prompts[1].content, /p=0\.000|null_mean=NaN/i);
+  const check = checkFigures('There is no computed P value.', run);
+  assert.equal(check.total, 0);
 });

@@ -49,3 +49,35 @@ test('served results and markdown disclose the fold-local and mixed-heldout supp
     assert.match(md, /mean within-mixed-batch AUC/i);
   });
 });
+
+test('cold sparse CSV journey abstains without crashing explanation or rendering false evidence', async () => {
+  const old = process.env.NEBIUS_API_KEY;
+  delete process.env.NEBIUS_API_KEY;
+  try {
+    await withServer(async (base) => {
+      const rows = ['sample_id,batch,label,f1,f2'];
+      for (let i = 0; i < 12; i++) {
+        rows.push(['s' + i, 'B' + (i % 3), i === 0 ? 1 : 0, i / 3, i % 2].join(','));
+      }
+      const data = await (await post(base, '/api/dataset',
+        { csv: rows.join('\n'), name: 'Sparse label case' })).json();
+      const r = await post(base, '/api/run', { datasetId: data.datasetId });
+      assert.equal(r.status, 200);
+      const result = await r.json();
+      assert.equal(result.results.naive.auc, null);
+      assert.equal(result.results.within_batch_permutation.p, null);
+      assert.equal(result.verdict.id, 'open');
+      const m = await (await post(base, '/api/report',
+        { datasetId: data.datasetId })).text();
+      assert.match(m, /n\/a/);
+      assert.match(m, /unidentifiable/i);
+      const explained = await post(base, '/api/explain', { datasetId: data.datasetId });
+      assert.equal(explained.status, 200);
+      const body = await explained.json();
+      assert.equal(body.reason, 'no-key');
+    });
+  } finally {
+    if (old === undefined) delete process.env.NEBIUS_API_KEY;
+    else process.env.NEBIUS_API_KEY = old;
+  }
+});
