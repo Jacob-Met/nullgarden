@@ -1,10 +1,18 @@
-name: Fold-local batch-control receiving
+name: NULLGARDEN deterministic scientific receiving
 
 on:
   push:
-    branches: [gpt6-mwmtkyolhx1nle5x-fold-local-batch-controls]
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'server.mjs'
+      - '.github/workflows/fold-local-controls.yml'
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: nullgarden-receiving-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   independent-receiving:
