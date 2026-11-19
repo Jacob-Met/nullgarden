@@ -2,6 +2,13 @@ name: NULLGARDEN measured Bioconductor bladderbatch external receiving
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'research/export-real-bladderbatch.R'
+      - 'research/real-bladderbatch-receiving.mjs'
+      - '.github/workflows/real-bladderbatch-science.yml'
   pull_request:
     paths:
       - 'research/export-real-bladderbatch.R'
@@ -10,6 +17,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: bladderbatch-real-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   external-measured-science:
@@ -42,4 +53,6 @@ jobs:
           node research/real-bladderbatch-receiving.mjs
       - name: Remove raw measured assay CSV from transient runner
         if: always()
-        run: rm -f "${NULLGARDEN_REAL_CSV}" "${NULLGARDEN_REAL_CSV}.cancer-v-normal.csv" "${NULLGARDEN_REAL_CSV}.cancer-v-biopsy.csv" "${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz"
+        run: |
+          # Match ONLY this job's named transient experiment prefix.
+          rm -f "${NULLGARDEN_REAL_CSV}"* "${RUNNER_TEMP}/bladderbatch_1.50.0.tar.gz"
