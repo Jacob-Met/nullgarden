@@ -449,10 +449,33 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
     throw new RangeError('Permutation stopping must be fixed or decision with a predeclared budget');
   }
   const n = ds.y.length;
+  const registration=ds.randomization??null;
+  if(registration!==null) {
+    if(typeof registration!=='object'||Array.isArray(registration)
+      ||Object.keys(registration).sort().join(',')!=='mechanism,protocolId,unit'
+      ||registration.unit!=='cluster'
+      ||registration.mechanism!=='uniform_within_batch'
+      ||typeof registration.protocolId!=='string'
+      ||!registration.protocolId.trim()||registration.protocolId.length>200) {
+      const error=new Error('Cluster allocation requires exact, predeclared randomization {unit:"cluster",mechanism:"uniform_within_batch",protocolId:"..."}');
+      error.code='RANDOMIZATION_NOT_REGISTERED';throw error;
+    }
+  }
+  const clusterAssigned=registration?.unit==='cluster';
+  const assignmentUnit=clusterAssigned?'cluster':'subject';
   const subjects = conditionalUnits(ds.batch, ds.y, ds.subject ?? null);
   const clusters = ds.cluster ? conditionalClusters(ds.batch,ds.y,ds.subject,ds.cluster) : null;
-  const unitMode = clusters ? 'declared_nested_cluster_blocks'
-    : ds.subject ? 'declared_subject_blocks' : 'assumed_independent_rows';
+  if(clusterAssigned) {
+    if(!clusters) {
+      const error=new Error('Cluster randomized trial requires subject_id and cluster_id');
+      error.code='CLUSTER_ASSIGNMENT_METADATA_MISSING';throw error;
+    }
+    // Validate label uniformity BEFORE computing any CV score or inference.
+    conditionalOrbitSize(ds.batch,ds.y,1,ds.subject,ds.cluster,'cluster');
+  }
+  const unitMode=clusterAssigned?'registered_cluster_randomization'
+    : clusters?'declared_nested_cluster_blocks'
+    : ds.subject?'declared_subject_blocks':'assumed_independent_rows';
   const table = designTable(ds);
   const mixedSet = new Set(table.filter((t) => t.mixed).map((t) => t.batch));
   const results = {};
@@ -485,22 +508,26 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       Math.floor(25000000 / Math.max(1, n * ds.X[0].length * 15)));
     const orbitSize = exactMax >= 1 && naive !== null
       && Number.isInteger(perms) && perms >= 1
-      ? conditionalOrbitSize(ds.batch, ds.y, exactMax, ds.subject ?? null, ds.cluster ?? null) : null;
+      ? conditionalOrbitSize(ds.batch, ds.y, exactMax, ds.subject ?? null, ds.cluster ?? null, assignmentUnit) : null;
     if (clusters && orbitSize === 1) {
       results.within_batch_permutation={id:'within_batch_permutation',
         ...CONTROLS.within_batch_permutation,auc:null,p:null,pLower:null,pUpper:null,
         pExact:false,permsBudget:0,permsRun:0,orbitSize:1,stopping:'abstain',
         statisticRepeats:3,statisticSeed:seed,
         unitMode,independentUnits:clusters.length,subjectUnits:subjects.length,independentClusters:clusters.length,
-        nullSampling:'no_nested_cluster_contrast',
-        inferenceLimit:'All label assignments are fixed after conditioning on nested cluster; subjects cannot be exchanged across their related families or sites. Conditional independence and causal effects cannot be inferred from this design.',
+        nullSampling:clusterAssigned?'no_cluster_randomization_contrast':'no_nested_cluster_contrast',
+        inferenceLimit:clusterAssigned
+          ? 'No distinct treatment allocations remain across whole clusters within registration strata; the trial design cannot identify this randomization contrast.'
+          : 'All label assignments are fixed after conditioning on nested cluster; subjects cannot be exchanged across their related families or sites. Conditional independence and causal effects cannot be inferred from this design.',
         status:'unavailable',
-        finding:'No label-distinguishable independent subjects exist within a declared cluster. The group-conditional null has only the observed assignment; inferential evidence abstains instead of reporting p=1 as a biological result.'};
+        finding:clusterAssigned
+          ? 'Only the observed allocation is admissible for the registered cluster-randomization design. No randomization contrast is identifiable.'
+          : 'No label-distinguishable independent subjects exist within a declared cluster. The group-conditional null has only the observed assignment; inferential evidence abstains instead of reporting p=1 as a biological result.'};
     } else if (orbitSize !== null && orbitSize <= exactMax) {
       const nulls = [];
       let observedAllocations = 0;
       for (const labels of conditionalLabelAssignments(ds.batch, ds.y,
-        {maxAssignments: exactMax, subject: ds.subject ?? null, cluster: ds.cluster ?? null})) {
+        {maxAssignments: exactMax, subject: ds.subject ?? null, cluster: ds.cluster ?? null, assignmentUnit})) {
         if (labels.every((label, i) => label === ds.y[i])) observedAllocations++;
         const score = repeatedCv({...ds, y: labels},
           modelScorer(ds.X, labels, k), {seed, repeats: 3});
@@ -515,9 +542,11 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         statisticRepeats: 3, statisticSeed: seed,
         statisticAggregation: ds.subject ? 'mean_per_heldout_fold_subject_auc' : 'mean_per_heldout_fold',
         unitMode, independentUnits: clusters?clusters.length:subjects.length,
-        ...(clusters ? {subjectUnits:subjects.length,independentClusters:clusters.length,conditioningLevel:'nested_cluster'} : {}),
-        nullSampling: 'complete_batch_conditional_orbit',
-        inferenceLimit: clusters
+        ...(clusters ? {subjectUnits:subjects.length,independentClusters:clusters.length,conditioningLevel:clusterAssigned?'cluster_randomization':'nested_cluster'} : {}),
+        nullSampling: clusterAssigned?'complete_cluster_randomization_orbit':'complete_batch_conditional_orbit',
+        inferenceLimit: clusterAssigned
+          ? 'Treatment labels permute ONLY as whole cluster_id blocks within batch, under explicitly registered uniform cluster-randomization protocol '+registration.protocolId+'. Metadata asserts the assignment mechanism but cannot verify historical execution. Observational clusters, interference, restricted randomization and unequal probabilities are unsupported; CV on unseen clusters tests prediction, NOT an effect estimand.'
+          : clusters
           ? 'Subject labels are exchanged ONLY within their declared cluster_id nested in batch, with whole-subject measurements inseparable. Complete exchangeability within each cluster is a scientific assumption, not proved by metadata. Cluster-heldout CV tests transfer to unseen families/sites, not causation or valid unregistered hypothesis search.'
           : 'Exact enumeration holds feature data, batch memberships and positive independent-unit counts fixed and treats each permitted within-batch subject-block label assignment equally. Declared subject IDs prohibit splitting repeated measurements; independent subject exchangeability remains an unverified scientific assumption. Without subject IDs, each row is assumed independent. No biological causation or across-hypothesis error control follows.',
       };
@@ -556,7 +585,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
       if (naive !== null && Number.isInteger(perms) && perms >= 1) {
         let exceedances = 0;
         for (let b = 0; b < perms; b++) {
-          const y2 = sampleConditionalLabels(ds.batch, ds.y, r, ds.subject ?? null, ds.cluster ?? null);
+          const y2 = sampleConditionalLabels(ds.batch, ds.y, r, ds.subject ?? null, ds.cluster ?? null, assignmentUnit);
           const value = repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
             // The observed and shuffled labels share the exact same frozen
             // three-repeat foldwise AUC statistic and CV seed.
@@ -571,7 +600,9 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         }
       }
       const complete = nulls.length === perms;
-      const inferenceLimit = clusters
+      const inferenceLimit = clusterAssigned
+        ? 'Only cluster-level treatment assignments are permuted within batch under registered uniform protocol '+registration.protocolId+'. Randomization history is asserted but not independently verified. This is a predictive CV randomization test, not an average treatment-effect estimator; no claims for observational, matched-pair, unequal-probability, adaptive or interference designs. Fixed-budget and fixed family registration remain mandatory.'
+        : clusters
         ? 'Within each nested cluster, whole subjects must truly be conditionally exchangeable, while entire families/sites are held out from CV. Clusters cannot be mixed or swapped between batches. Fixed-budget sequential bounds are valid only for the predeclared statistic, family and seed; no causal inference follows.'
         : 'Requires exchangeable independent subject units within batches. Declared repeated measurements move together; without subject IDs each row is assumed independent, which cannot be verified. This fixed-budget stopping bound does not cover changed budgets, repeated seeds or post-hoc hypothesis selection and does not identify a causal effect.';
       const valid = naive !== null && nulls.length > 0
@@ -585,8 +616,8 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         statisticRepeats: 3, statisticSeed: seed,
         statisticAggregation: ds.subject ? 'mean_per_heldout_fold_subject_auc' : 'mean_per_heldout_fold',
         unitMode, independentUnits: clusters?clusters.length:subjects.length,
-        ...(clusters ? {subjectUnits:subjects.length,independentClusters:clusters.length,conditioningLevel:'nested_cluster'} : {}),
-        nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
+        ...(clusters ? {subjectUnits:subjects.length,independentClusters:clusters.length,conditioningLevel:clusterAssigned?'cluster_randomization':'nested_cluster'} : {}),
+        nullSampling: clusterAssigned?'cluster_randomization_fixed_statistic':'batch_conditional_fixed_statistic', inferenceLimit,
       };
       if (!valid) {
         results.within_batch_permutation = { id: 'within_batch_permutation',
@@ -693,7 +724,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
   }
   return { n, nSubjects: subjects.length,
     ...(clusters ? {nClusters:clusters.length} : {}),
-    unitMode, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
+    unitMode, ...(clusterAssigned?{randomization:registration}:{}), nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
 }
 
 export function verdict(res) {
