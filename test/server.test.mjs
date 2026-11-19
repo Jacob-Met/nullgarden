@@ -25,3 +25,27 @@ test('serves the app and runs controls end to end without a key', async () => {
   });
   if (saved) process.env.NEBIUS_API_KEY = saved;
 });
+
+test('served results and markdown disclose the fold-local and mixed-heldout support envelope', async () => {
+  await withServer(async (base) => {
+    const dataset = await (await post(base, '/api/dataset', { scenario: 'shortcut_only' })).json();
+    const payload = {datasetId: dataset.datasetId,
+      controls: ['leave_batch_out', 'batch_residualized']};
+    const response = await post(base, '/api/run', payload);
+    assert.equal(response.status, 200);
+    const run = await response.json();
+    assert.equal(run.results.batch_residualized.preprocessing, 'training_fold_only');
+    assert.equal(run.results.leave_batch_out.aggregation,
+      'mean_per_mixed_heldout_batch');
+    assert.equal(run.results.leave_batch_out.nMixedHeldout, 2);
+    assert.equal(run.results.leave_batch_out.nPureHeldout, 3);
+    assert.ok(Number.isFinite(run.results.leave_batch_out.auc));
+    assert.ok(Number.isFinite(run.results.leave_batch_out.pooledOofAuc));
+    assert.ok(Math.abs(run.results.leave_batch_out.auc
+      - run.results.leave_batch_out.pooledOofAuc) > 0.2);
+    const md = await (await post(base, '/api/report', payload)).text();
+    assert.match(md, /training-fold-only batch-centered AUC/);
+    assert.match(md, /pure-label heldouts excluded/);
+    assert.match(md, /mean within-mixed-batch AUC/);
+  });
+});
