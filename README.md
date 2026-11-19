@@ -40,6 +40,19 @@ The native engine now treats subjects as **indivisible conditional-label allocat
 
 The receiving suite includes independent 64-mask exhaustive p-value computation, finite-null type-I enumeration over all 64 legal observations, donor coassignment to folds, grouped Monte Carlo invariants, metadata contradiction failures, and end-to-end HTTP/CSV and exported-report checks. See [Winkler et al., *Multi-level block permutation*](https://pubmed.ncbi.nlm.nih.gov/26074200/) (NeuroImage 2015) for why exchangeability blocks matter and [Roberts et al., *Cross-validation strategies for hierarchical data*](https://doi.org/10.1111/ecog.02881) (Ecography 2017) for leakage from dependence in ordinary random splits.
 
+## Falsification: an entire donor-level conditional null
+
+Run `node research/subject-pseudoreplication-null.mjs` to reproduce a frozen **complete 64-assignment null**, using the production CV, feature selection, diagonal-LDA, permutation p-value and stopped/fixed-budget contract. The null observations are 12 subjects across six mixed batches, with one balanced binary subject assignment per batch and **no feature that predicts biology on a new donor**. Features are subject-identity indicators, representing technical fingerprints. All 64 donor-level relabelings are equiprobable under this declared synthetic null.
+
+| Physical observations per subject | Legacy row-wise null rejects at 0.05 | Subject-blocked exact null rejects at 0.05 | Row-wise mean AUC | Subject-heldout mean AUC |
+| --- | ---: | ---: | ---: | ---: |
+| 1 (independent rows) | 0/64 | 0/64 | 0.500 | 0.500 |
+| 3 (technical replicates) | **64/64** | **0/64** | **1.000** | **0.500** |
+
+The invalid row test reports minimum p = 1/41 ≈ 0.0244 on all 64 dependent assignments: it mistakes donor-fingerprint memorization for learned biological signal. The blocked test finds no such evidence (p = 1 for every assignment). A **separate** positive synthetic control with genuine across-subject feature signal produces subject-heldout AUC = 1 and Monte Carlo p = 0.005 over 199 shuffles; blocking does not simply suppress every signal.
+
+This is a deliberately adversarial, deterministic **one-design empirical counterexample** to row-wise analysis—not a universal estimate of type-I error, a human clinical cohort, an external generalization result, or a multi-hypothesis correction. The complete-null claims can be checked independently against the finite 64-point orbit. The workflow runs the benchmark after the standard scientific tests and frozen real-app scenario checks, publishing machine-readable result JSON and a SHA-256 digest in Actions logs without committing generated reports.
+
 ## Exact batch-conditional randomization for tractable designs
 
 NULLGARDEN now checks the size of the *complete* conditional label orbit before drawing random shuffles. With batch (b) containing (n_b) observations and (k_b) positive labels, there are exactly `product_b choose(n_b, k_b)` distinct allocations consistent with the observed within-batch positive counts. It uses bounded, overflow-safe integer combinatorics and a **lazy** joint assignment enumerator (no factorial-sized array, no duplicate arrangements of indistinguishable labels). If the orbit fits both a 512-assignment ceiling and a deterministic estimated-work budget of 25 million feature/sample/fold operations, it evaluates **every** allocation using the same three-repeat foldwise AUROC statistic and fixed CV seed, with the observed allocation included exactly once.
