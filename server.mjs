@@ -6,6 +6,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits, conditionalClusters, conditionalOrbitSize } from './src/core.mjs';
 import { SCENARIOS, parseCsv } from './src/data.mjs';
 import { runFamilywiseK, planFamilywiseK } from './src/familywise.mjs';
+import { planClusterTrialOutcome, runClusterTrialOutcome, trialOutcomeMarkdown } from './src/cluster-trial.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,6 +33,12 @@ function registerRandomization(ds, request) {
   return {...ds,randomization:Object.freeze({...request})};
 }
 
+function registerTrialOutcome(ds, proposal) {
+  if(proposal===undefined||proposal===null)return ds;
+  const locked=planClusterTrialOutcome(ds,proposal);
+  return {...ds,trialOutcome:locked};
+}
+
 function remember(name, ds, proposal) {
   // Register the family at dataset intake, before any NULLGARDEN results are
   // returned. Future family calls cannot change its hypotheses or seed.
@@ -41,7 +48,7 @@ function remember(name, ds, proposal) {
   }
   const registrationDigest=createHash('sha256').update(JSON.stringify({
     schema:'nullgarden.family-intake.v1',
-    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,randomization:ds.randomization??null,y:ds.y,X:ds.X,features:ds.features},
+    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,randomization:ds.randomization??null,trialOutcome:ds.trialOutcome??null,y:ds.y,X:ds.X,features:ds.features},
     family
   })).digest('hex');
   const id=randomUUID();
@@ -59,6 +66,7 @@ function describe(id) {
       ? 'cluster_disjoint_whole_cluster_randomization'
       : 'cluster_disjoint_within_cluster_permutation'}:{}),
     ...(ds.randomization?{randomization:ds.randomization}:{}),
+    ...(ds.trialOutcome?{trialOutcomeRegistration:ds.trialOutcome}:{}),
     features: ds.features.length, design: designTable(ds), model: MODEL,
     familyRegistration: {lockedAt:'dataset_intake',sha256:registrationDigest,...family} };
 }
@@ -85,14 +93,24 @@ export function makeServer() {
         if (b.csv) { ds = parseCsv(String(b.csv)); name = String(b.name || 'Uploaded CSV').slice(0, 80); }
         else if (SCENARIOS[b.scenario]) { ds = SCENARIOS[b.scenario].make(); name = SCENARIOS[b.scenario].name; }
         else return send(400, { error: 'Unknown scenario.' });
-        ds=registerRandomization(ds,b.randomization);
+        ds=registerTrialOutcome(registerRandomization(ds,b.randomization),b.trialOutcome);
         return send(200, describe(remember(name, ds, b.family)));
       }
-      if (req.method === 'POST' && ['/api/run', '/api/family', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
+      if (req.method === 'POST' && ['/api/run', '/api/family', '/api/trial-outcome', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
-        if (Object.hasOwn(b,'randomization')) throw new Error('Randomization mechanism is immutable after /api/dataset intake; reload the dataset to register a distinct trial');
+        if (Object.hasOwn(b,'randomization')||Object.hasOwn(b,'trialOutcome')) throw new Error('Treatment assignment and primary trial outcome are immutable after /api/dataset intake; reload dataset to preregister a distinct trial');
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
+        if (url.pathname === '/api/trial-outcome') {
+          if (Object.keys(b).some(key=>key!=='datasetId')) {
+            throw new Error('Trial outcome, seed and budget were locked at dataset intake; only datasetId is accepted');
+          }
+          if (!entry.ds.trialOutcome) {
+            throw new Error('No primary trial outcome was registered when this dataset was loaded');
+          }
+          return send(200,{...runClusterTrialOutcome(entry.ds),
+            registrationDigest:entry.registrationDigest,lockedAt:'dataset_intake'});
+        }
         if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));
         if (url.pathname === '/api/family') {
           if (Object.keys(b).some(key=>key!=='datasetId')) {
@@ -115,7 +133,9 @@ export function makeServer() {
           return send(200, { ok: true, text: r.text, model: r.model, ms: r.ms, check: checkFigures(r.text, run) });
         }
         const run = runControls(entry.ds, controlsFrom(b), { stopping: 'decision' });
-        return send(200, toMarkdown(entry.name, run, b.narrative ? String(b.narrative).slice(0, 4000) : ''), 'text/markdown; charset=utf-8');
+        const main=toMarkdown(entry.name, run, b.narrative ? String(b.narrative).slice(0, 4000) : '');
+        const trial=entry.ds.trialOutcome ? '\\n'+trialOutcomeMarkdown(runClusterTrialOutcome(entry.ds)) : '';
+        return send(200,main+trial,'text/markdown; charset=utf-8');
       }
       if (req.method === 'GET') {
         const f = url.pathname === '/' ? '/index.html' : url.pathname;
