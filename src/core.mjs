@@ -332,10 +332,24 @@ export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) 
       });
       return nPositive === 0 || nNegative === 0;
     })) return null;
-    const s = oof(ds.y.length, f, scorerFactory);
-    const value = auc(s, ds.y);
-    if (value === null) return null;
-    aucs.push(value);
+    // Different heldout folds use DIFFERENT fitted models. Pooling their
+    // raw scores ranks unrelated model intercepts/scales against one another
+    // and can turn perfectly discriminating within-fold predictions into
+    // an arbitrarily poor pooled AUC. Evaluate only within each heldout fold.
+    const foldAucs = [];
+    for (const test of f) {
+      const tested = new Set(test);
+      const train = ds.y.map((_, i) => i).filter((i) => !tested.has(i));
+      const testLabels = pick(ds.y, test);
+      // Unlike pooled OOF rankings, fold AUC has no definition when the
+      // heldout fold is pure. The entire requested repeated-CV estimand
+      // abstains rather than silently discarding or inventing those pairs.
+      if (!testLabels.includes(0) || !testLabels.includes(1)) return null;
+      const value = auc(scorerFactory(train, test), testLabels);
+      if (value === null) return null;
+      foldAucs.push(value);
+    }
+    aucs.push(mean(foldAucs));
   }
   return mean(aucs);
 }
@@ -355,6 +369,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
   const naive = repeatedCv(ds, modelScorer(ds.X, ds.y, k), { seed });
   results.naive = { id: 'naive', title: 'Naive random-split CV',
     question: 'The headline number a shortcut can inflate.', auc: naive,
+    aggregation: 'mean_per_heldout_fold',
     status: naive === null ? 'unavailable' : 'baseline',
     finding: naive === null
       ? 'Training folds lose one class; the headline AUC is unidentifiable, not chance performance.'
@@ -364,7 +379,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
     const identifiable = a !== null && naive !== null;
     const same = identifiable && a >= naive - 0.05;
     results.batch_only = { id: 'batch_only', ...CONTROLS.batch_only,
-      auc: identifiable ? a : null,
+      auc: identifiable ? a : null, aggregation: 'mean_per_heldout_fold',
       status: identifiable ? (same ? 'shortcut' : 'neutral') : 'unavailable',
       finding: !identifiable
         ? 'Class support in at least one training fold is insufficient for a batch-only comparison.'
@@ -401,6 +416,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
       results.within_batch_permutation = { id: 'within_batch_permutation',
         ...CONTROLS.within_batch_permutation, auc: null, p: null, perms,
         statisticRepeats: 3, statisticSeed: seed,
+        statisticAggregation: 'mean_per_heldout_fold',
         nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
         status: 'unavailable',
         finding: 'A valid permutation p-value requires identifiable two-class training folds for the observation and every shuffled-label run.' };
@@ -414,6 +430,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         nullMean, nullLo: quantile(nulls, 0.025),
         nullHi: quantile(nulls, 0.975), p, perms,
         statisticRepeats: 3, statisticSeed: seed,
+        statisticAggregation: 'mean_per_heldout_fold',
         nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
         // Nonrejection is not evidence FOR a batch-only explanation.
         // Only the positive shortcut controls below can support that claim.
@@ -488,6 +505,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination is weak under this control; this does not establish absence of biological signal.`;
     results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized,
       auc: a, nUsed: keep.length, preprocessing: 'training_fold_only',
+      aggregation: 'mean_per_heldout_fold',
       status: a === null ? 'unavailable' : survives ? 'signal' : 'shortcut',
       finding };
   }
@@ -518,7 +536,8 @@ export function toMarkdown(name, run, narrative) {
   const L = [`# NULLGARDEN control report: ${name}`, '', `Verdict: **${run.verdict.label}**. ${run.verdict.text}`, '', `${run.n} samples, ${run.nBatches} batches, ${run.mixedBatches.length} with both labels.`, '',
     '| Control | AUC | Status |', '|---|---|---|'];
   for (const r of Object.values(run.results)) L.push(`| ${r.title} | ${r.auc === null ? 'n/a' : r.auc.toFixed(3)} | ${r.status || 'baseline'} |`);
-  L.push('', '## Findings');
+  L.push('', '## Cross-validation estimand', '',
+    'Random stratified CV reports the mean AUROC evaluated separately within each mixed-label heldout fold, averaged over repeats. Raw prediction ranks from different fitted models must not be pooled; if any requested test fold is pure-label, its AUROC is undefined and the aggregate abstains.', '', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   const permutation = run.results.within_batch_permutation;
   if (permutation) L.push('', '## Permutation inference limits', '',
