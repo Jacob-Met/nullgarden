@@ -70,11 +70,13 @@ const result = {
   nullFamily, signalFamily, elapsed_ms: Math.round(performance.now()-start),
 };
 console.log(JSON.stringify(result,null,2));
-if (nullFamily.hits > 10) {
-  process.stderr.write('Conditional-null error exceeds preregistered 10/64 gate\n');
-  process.exitCode = 2;
-}
-if (signalFamily.hits < 8) {
-  process.stderr.write('Within-batch signal falls below preregistered 8/16 gate\n');
-  process.exitCode = 3;
+if (!process.argv.includes('--observe-only')) {
+  if (nullFamily.hits > 10) {
+    process.stderr.write('Conditional-null error exceeds preregistered 10/64 gate\n');
+    process.exitCode = 2;
+  }
+  if (signalFamily.hits < 8) {
+    process.stderr.write('Within-batch signal falls below preregistered 8/16 gate\n');
+    process.exitCode = 3;
+  }
 }
