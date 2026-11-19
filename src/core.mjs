@@ -72,6 +72,40 @@ export function batchFolds(batch) {
   return names.map((b) => batch.map((v, i) => (v === b ? i : -1)).filter((i) => i >= 0));
 }
 
+/** Each batch's heldout samples share ONE fitted model, hence one score scale.
+ * Cross-batch pooled ranks of independently fitted models are not a valid
+ * substitute for within-heldout-batch AUC, especially for pure-label batches.
+ * Pure groups have no AUROC by definition and are explicitly accounted for.
+ */
+export function macroBatchAuc(scores, y, batch) {
+  if (scores.length !== y.length || batch.length !== y.length) {
+    throw new Error('AUC scores, labels and batch IDs must have equal length');
+  }
+  const groups = new Map();
+  for (let i = 0; i < batch.length; i++) {
+    const group = groups.get(batch[i]) || [];
+    group.push(i);
+    groups.set(batch[i], group);
+  }
+  const perBatch = [...groups].map(([name, ids]) => ({
+    batch: name, n: ids.length,
+    positives: ids.filter((i) => y[i] === 1).length,
+    auc: auc(ids.map((i) => scores[i]), ids.map((i) => y[i])),
+  }));
+  const mixed = perBatch.filter((group) => group.auc !== null);
+  return { auc: mixed.length ? mean(mixed.map((group) => group.auc)) : null,
+    nMixedHeldout: mixed.length, nPureHeldout: perBatch.length - mixed.length,
+    perBatch };
+}
+
+/** The raw pooled AUC is preserved as an explicit *diagnostic only*. */
+export function leaveBatchOutEvaluation(ds, k = 20) {
+  const scores = oof(ds.y.length, batchFolds(ds.batch), modelScorer(ds.X, ds.y, k));
+  return { ...macroBatchAuc(scores, ds.y, ds.batch),
+    pooledOofAuc: auc(scores, ds.y) };
+}
+
+
 function pick(arr, ids) { return ids.map((i) => arr[i]); }
 
 // Pooled out-of-fold scores for a scorer(trainIdx, testIdx) -> scores
@@ -201,11 +235,23 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         : `Shuffled labels reach a mean AUC of ${mean(nulls).toFixed(2)} and the observed score is not distinguishable from that null (p = ${p.toFixed(3)}). The batch structure alone explains it.` };
   }
   if (selected.includes('leave_batch_out')) {
-    const s = oof(n, batchFolds(ds.batch), modelScorer(ds.X, ds.y, k));
-    const a = auc(s, ds.y);
-    const drop = naive - a;
-    results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out, auc: a, status: drop >= 0.15 ? 'shortcut' : 'neutral',
-      finding: drop >= 0.15 ? `Holding out whole batches drops the score by ${drop.toFixed(2)}. The model depends on having seen the batch.` : 'Holding out whole batches changes the score little.' };
+    const summary = leaveBatchOutEvaluation(ds, k);
+    const adequate = summary.nMixedHeldout >= 2;
+    // One held-out mixed batch gives an AUC for that batch, not evidence of
+    // transfer *across batches*. Keep its value in perBatch, abstain overall.
+    const a = adequate ? summary.auc : null;
+    const drop = a === null ? null : naive - a;
+    const shortcut = drop !== null && drop >= 0.15;
+    const finding = a === null
+      ? `Only ${summary.nMixedHeldout} held-out batch(es) contain both labels; batch-transfer AUROC is not identifiable across multiple batches. ${summary.nPureHeldout} pure-label batch(es) cannot contribute AUROC.`
+      : shortcut
+        ? `Holding out whole batches drops mean within-mixed-batch AUC by ${drop.toFixed(2)} across ${summary.nMixedHeldout} evaluable batches; ${summary.nPureHeldout} pure-label batches excluded from AUC.`
+        : `Mean within-mixed-batch AUC changes little across ${summary.nMixedHeldout} evaluable held-out batches; ${summary.nPureHeldout} pure-label batches excluded from AUC.`;
+    results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out,
+      auc: a, aggregation: 'mean_per_mixed_heldout_batch',
+      nMixedHeldout: summary.nMixedHeldout, nPureHeldout: summary.nPureHeldout,
+      perBatch: summary.perBatch, pooledOofAuc: summary.pooledOofAuc,
+      status: shortcut ? 'shortcut' : 'neutral', finding };
   }
   if (selected.includes('batch_residualized')) {
     // Restrict the diagnostic to mixed-label batches as before; crucially,
