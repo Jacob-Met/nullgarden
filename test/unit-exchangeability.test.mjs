@@ -145,3 +145,44 @@ test('independent complete-unit conditional oracle agrees with production exact 
     units:12,measurements:24,permutations:64,observedAuc:observed,
     exactP:pExact}));
 });
+
+test('unequal technical-replicate multiplicity cannot change independent-unit inference',()=>{
+  const original={ids:[],unit:[],batch:[],y:[],X:[],features:['x','z','w']};
+  for(let u=0;u<12;u++){
+    const label=u%2, batch='b'+Math.floor(u/2);
+    const feature=[
+      ((u*17+5)%23-11)*0.22+(label?0.65:0),
+      ((u*7+3)%19-9)*0.28+(label?0.24:0),
+      ((u*13+11)%17-8)*0.17,
+    ];
+    for(let rep=0;rep<2;rep++){
+      original.ids.push('U'+u+'-r'+rep);
+      original.unit.push('U'+u);
+      original.batch.push(batch);
+      original.y.push(label);
+      original.X.push(feature.slice()); // genuine technical duplicates
+    }
+  }
+  const inflated=Object.fromEntries(Object.entries(original).map(([k,v])=>[
+    k, Array.isArray(v)?v.slice():v]));
+  for(let rep=2;rep<19;rep++){
+    inflated.ids.push('U0-r'+rep);
+    inflated.unit.push('U0');
+    inflated.batch.push('b0');
+    inflated.y.push(0);
+    inflated.X.push(original.X[0].slice());
+  }
+  const opts={seed:20261030,perms:16,k:2};
+  const selected=['batch_only','within_batch_permutation','leave_batch_out','batch_residualized'];
+  const baseline=runControls(original,selected,opts);
+  const extra=runControls(inflated,selected,opts);
+  assert.equal(baseline.nUnits,12);
+  assert.equal(extra.nUnits,12);
+  for(const id of ['naive',...selected]){
+    assert.equal(extra.results[id].auc,baseline.results[id].auc,
+      id+' changed when one donor had more identical technical replicates');
+  }
+  assert.equal(extra.results.within_batch_permutation.p,
+    baseline.results.within_batch_permutation.p);
+  assert.equal(extra.verdict.id,baseline.verdict.id);
+});
