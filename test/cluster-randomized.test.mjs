@@ -130,7 +130,8 @@ test('variable cluster sizes keep allocation units, not row counts; large orbits
   assert.equal(p.pExact,true,'complete fixed Monte Carlo budget, not full orbit');
   assert.equal(p.permsRun,19);
   assert.equal(p.permsBudget,19);
-  assert.equal(p.orbitSize,513,'saturated orbit exceeds exact enumeration cap');
+  assert.equal(p.orbitSizeLowerBound,513,'saturated orbit exceeds exact enumeration cap');
+  assert.equal(p.orbitSizeExact,false,'bound is not an exact allocation count');
   assert.ok(p.p>=1/20&&p.p<=1);
 });
 
