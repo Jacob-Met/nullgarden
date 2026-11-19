@@ -361,7 +361,32 @@ export const CONTROLS = {
   batch_residualized: { title: 'Batch-centered features', question: 'Is there signal left within mixed batches after each batch mean is removed?' },
 };
 
-export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261030, perms = 100, k = 20 } = {}) {
+/** For the predeclared fixed-budget B permutation test, the final exact
+ * p=(1+L_B)/(B+1) lies in [lower,upper] after t draws, with L_t exceedances.
+ * Stopping when either bound establishes the final alpha decision is
+ * pathwise identical to completing B draws, for EVERY unseen suffix.
+ * Since upper>=final p on every path, upper is an anytime-valid conservative
+ * p-process (fixed B, no budget switching). This is not the exact final p
+ * unless t=B, nor an anytime process across changed budgets/hypotheses.
+ */
+export function permutationDecisionBounds(losses, drawn, budget, alpha = 0.05) {
+  if (!Number.isInteger(budget) || budget < 1
+      || !Number.isInteger(drawn) || drawn < 0 || drawn > budget
+      || !Number.isInteger(losses) || losses < 0 || losses > drawn
+      || !Number.isFinite(alpha) || alpha <= 0 || alpha >= 1) {
+    throw new RangeError('Permutation decision bounds require 0<=losses<=drawn<=budget, budget>=1 and 0<alpha<1');
+  }
+  const lower = (1 + losses) / (budget + 1);
+  const upper = (1 + losses + budget - drawn) / (budget + 1);
+  return {lower, upper, decision: upper <= alpha ? 'reject'
+    : lower > alpha ? 'retain' : 'continue'};
+}
+
+export function runControls(ds, selected = Object.keys(CONTROLS),
+  { seed = 20261030, perms = 100, k = 20, stopping = 'fixed' } = {}) {
+  if (!['fixed', 'decision'].includes(stopping)) {
+    throw new RangeError('Permutation stopping must be fixed or decision with a predeclared budget');
+  }
   const n = ds.y.length;
   const table = designTable(ds);
   const mixedSet = new Set(table.filter((t) => t.mixed).map((t) => t.batch));
@@ -390,7 +415,9 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
   if (selected.includes('within_batch_permutation')) {
     const r = rng(seed + 2);
     const nulls = [];
+    let prefix = null;
     if (naive !== null && Number.isInteger(perms) && perms >= 1) {
+      let exceedances = 0;
       for (let b = 0; b < perms; b++) {
         const y2 = ds.y.slice();
         for (const t of table) {
@@ -398,49 +425,65 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
           const sh = shuffle(ids.map((i) => ds.y[i]), r);
           ids.forEach((i, m) => { y2[i] = sh[m]; });
         }
-        nulls.push(repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
-          // All permutations must evaluate the SAME preregistered statistic as
-          // the observed sample. A one-repeat/null vs three-repeat/observed
-          // comparison (or a different fold seed for each shuffle) is not a
-          // valid conditional permutation test of that statistic.
-          { seed, repeats: 3 }));
+        const value = repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
+          // The observed and shuffled labels share the exact same frozen
+          // three-repeat foldwise AUC statistic and CV seed.
+          { seed, repeats: 3 });
+        nulls.push(value);
+        if (value === null || !Number.isFinite(value)) break;
+        if (value >= naive) exceedances++;
+        prefix = permutationDecisionBounds(exceedances, nulls.length, perms);
+        // Two monotone bounds prove the final B-permutation alpha-decision
+        // despite any unseen continuation, not just in expectation.
+        if (stopping === 'decision' && prefix.decision !== 'continue') break;
       }
     }
-    // The within-batch conditional randomization null assumes label
-    // exchangeability INSIDE each batch. Fix the CV randomness and repeat
-    // count before inspecting any shuffle; retain exact finite-MC (1+ge)/(1+B).
-    const inferenceLimit = 'Requires label exchangeability within each batch and a fixed, predeclared statistic, seed and permutation budget. Repeated peeking, changing seeds, or post-hoc selecting controls is not covered by this p-value.';
-    const valid = naive !== null && nulls.length === perms
-      && perms > 0 && nulls.every((v) => v !== null && Number.isFinite(v));
+    const complete = nulls.length === perms;
+    const inferenceLimit = 'Requires label exchangeability within each batch and a predeclared statistic, seed, permutation budget and hypothesis. Decision stopping within that one fixed budget is anytime-valid for the reported conservative upper p bound; changing the budget, rerunning selected seeds or post-hoc choosing controls is not covered.';
+    const valid = naive !== null && nulls.length > 0
+      && nulls.every((v) => v !== null && Number.isFinite(v))
+      && (complete || (stopping === 'decision'
+        && prefix && prefix.decision !== 'continue'));
+    const metadata = {
+      perms, permsBudget: perms, permsRun: nulls.length,
+      pLower: valid ? prefix.lower : null, pUpper: valid ? prefix.upper : null,
+      pExact: valid && complete, stopping,
+      statisticRepeats: 3, statisticSeed: seed,
+      statisticAggregation: 'mean_per_heldout_fold',
+      nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
+    };
     if (!valid) {
       results.within_batch_permutation = { id: 'within_batch_permutation',
-        ...CONTROLS.within_batch_permutation, auc: null, p: null, perms,
-        statisticRepeats: 3, statisticSeed: seed,
-        statisticAggregation: 'mean_per_heldout_fold',
-        nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
-        status: 'unavailable',
-        finding: 'A valid permutation p-value requires identifiable two-class training folds for the observation and every shuffled-label run.' };
+        ...CONTROLS.within_batch_permutation, ...metadata,
+        auc: null, p: null, status: 'unavailable',
+        finding: 'A valid conditional permutation comparison requires identifiable two-class heldout folds for the observation and every sampled relabeling.' };
     } else {
-      const ge = nulls.filter((v) => v >= naive).length;
-      const p = (1 + ge) / (perms + 1);
+      // The right bound is a valid conservative anytime p-process because
+      // it bounds the fixed-B exact Monte Carlo p on EVERY possible suffix.
+      const p = prefix.upper;
       const beats = p <= 0.05;
-      const nullMean = mean(nulls);
-      results.within_batch_permutation = { id: 'within_batch_permutation',
-        ...CONTROLS.within_batch_permutation, auc: nullMean,
-        nullMean, nullLo: quantile(nulls, 0.025),
-        nullHi: quantile(nulls, 0.975), p, perms,
-        statisticRepeats: 3, statisticSeed: seed,
-        statisticAggregation: 'mean_per_heldout_fold',
-        nullSampling: 'batch_conditional_fixed_statistic', inferenceLimit,
-        // Nonrejection is not evidence FOR a batch-only explanation.
-        // Only the positive shortcut controls below can support that claim.
-        status: beats ? 'signal' : 'neutral',
-        finding: beats
-          ? 'The observed score is above the batch-preserving null (p = '
-            + p.toFixed(3) + '), so some of it depends on which sample carries which label inside a batch.'
-          : 'Shuffled labels reach a mean AUC of ' + nullMean.toFixed(2)
-            + ' and the observed score is not distinguishable from that conditional null (p = '
-            + p.toFixed(3) + '). This does not prove that batch structure fully explains the score.' };
+      // A sequentially selected prefix is not an unbiased sample for
+      // displaying the full fixed-budget null distribution's mean/band.
+      const nullMean = complete ? mean(nulls) : null;
+      const finding = complete
+        ? (beats
+          ? 'The observed score is above the batch-preserving conditional null (exact finite-budget p = '
+            + p.toFixed(3) + '); within-batch label assignments matter under the exchangeability assumption.'
+          : 'The observed score is not distinguishable from the conditional null (exact finite-budget p = '
+            + p.toFixed(3) + '); nonrejection does not prove that batch structure explains the result.')
+        : (beats
+          ? 'Anytime-valid conservative upper p bound = ' + p.toFixed(3)
+            + ' after ' + nulls.length + '/' + perms + ' planned shuffles. Every possible unseen suffix still rejects at 0.05; the unobserved exact p is only bounded.'
+          : 'Stopped after ' + nulls.length + '/' + perms + ' planned shuffles: even the smallest possible final p = '
+            + prefix.lower.toFixed(3) + ' exceeds 0.05. The exact final p was not estimated; the reported conservative anytime upper p bound is '
+            + p.toFixed(3) + '. This is nonrejection, not affirmative evidence of a shortcut.');
+      results.within_batch_permutation = {
+        id: 'within_batch_permutation', ...CONTROLS.within_batch_permutation,
+        ...metadata, auc: nullMean, nullMean,
+        ...(complete ? {nullLo: quantile(nulls, 0.025),
+          nullHi: quantile(nulls, 0.975)} : {}),
+        p, status: beats ? 'signal' : 'neutral', finding,
+      };
     }
   }
   if (selected.includes('leave_batch_out')) {
@@ -542,7 +585,10 @@ export function toMarkdown(name, run, narrative) {
   const permutation = run.results.within_batch_permutation;
   if (permutation) L.push('', '## Permutation inference limits', '',
     permutation.inferenceLimit,
-    `Statistic: ${permutation.statisticRepeats} CV repeats, seed ${permutation.statisticSeed}; ${permutation.perms} within-batch permutations (fixed budget). The permutation null uses the same statistic and CV randomization as the observed dataset.`);
+    `Statistic: ${permutation.statisticRepeats} CV repeats, seed ${permutation.statisticSeed}; ${permutation.permsBudget} predeclared within-batch permutations, ${permutation.permsRun} actually evaluated (${permutation.stopping} stopping). The null uses the same statistic and CV randomization as the observed dataset.`,
+    permutation.p === null ? 'No permutation inference was identifiable.'
+      : permutation.pExact ? `Exact fixed-budget p: ${permutation.p.toFixed(4)}.`
+        : `Anytime-valid conservative p-value bound: ${permutation.p.toFixed(4)}. The unknown completed-budget p is in [${permutation.pLower.toFixed(4)}, ${permutation.pUpper.toFixed(4)}]; do not report a selected-prefix null mean or treat nonrejection as affirmative evidence.`);
   if (narrative) L.push('', '## Nemotron explanation (figures checked against the table above)', '', narrative);
   L.push('', '## Corrected evaluation candidate', '', 'Report mean per-mixed-heldout-batch AUC (pure-label heldouts excluded; at least two mixed groups needed) and training-fold-only batch-centered AUC next to the batch-only baseline. Scores pooled across separately fitted heldout-batch models are only diagnostic, not cross-batch discrimination evidence. Treat only the amount above the within-batch permutation null as tentative evidence of learned signal.');
   return L.join('\n') + '\n';
