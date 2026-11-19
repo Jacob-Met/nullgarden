@@ -51,7 +51,7 @@ const oracle={
   ]
 };
 const report=toMarkdown('Bioconductor bladderbatch: real 57-sample RMA assays, 200 frozen probes',r);
-if(!report.includes('assumed independent') && !report.includes('assumed to be independent'))
+if(!report.includes('No subject IDs were supplied'))
   throw new Error('Exported report failed to disclose unverified subject independence');
 const payload=JSON.stringify(oracle);
 console.log('real_bladderbatch_report='+payload);
