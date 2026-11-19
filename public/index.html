@@ -12,6 +12,7 @@
   <div class="scn" role="tablist" aria-label="Dataset" id="scenarios"></div>
   <label class="trial" title="Only select when whole clusters were truly randomized uniformly within their batch or stratum. Cluster metadata alone does not establish randomization."><input type="checkbox" id="trialMode"> Registered cluster trial</label>
   <label class="trial-id">Protocol ID <input id="trialProtocol" type="text" maxlength="200" placeholder="Preregistered trial ID" disabled aria-label="Cluster randomization protocol identifier"></label>
+  <label class="trial-id" title="Preregister the primary measured treatment outcome before inspecting any results. Must match an exact CSV feature column.">Outcome <input id="trialOutcome" type="text" maxlength="120" placeholder="Primary CSV feature" disabled aria-label="Preregistered primary trial outcome"></label>
   <label class="load">Load CSV<input type="file" id="csvFile" accept=".csv,text/csv"></label>
   <span class="llm" id="llmState" title="Nemotron on Nebius Token Factory"></span>
 </header>
@@ -32,6 +33,7 @@
       <div class="verdict" id="verdict" role="status"></div>
       <div class="ladder" id="ladder"></div>
       <ul class="findings" id="findings"></ul>
+      <section class="trial-effect" id="trialEffect" hidden aria-live="polite"></section>
       <button id="dl" class="quiet" type="button">Download report (Markdown)</button>
     </div>
   </section>
