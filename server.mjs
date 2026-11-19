@@ -7,6 +7,7 @@ import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits, condi
 import { SCENARIOS, parseCsv } from './src/data.mjs';
 import { runFamilywiseK, planFamilywiseK } from './src/familywise.mjs';
 import { planClusterTrialOutcome, runClusterTrialOutcome, trialOutcomeMarkdown } from './src/cluster-trial.mjs';
+import { runTrialConfidenceSet, trialConfidenceMarkdown } from './src/fisher-invert.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,14 @@ function registerTrialOutcome(ds, proposal) {
   return {...ds,trialOutcome:locked};
 }
 
+function registerEffectModel(ds, proposal){
+  if(proposal===undefined||proposal===null)return ds;
+  if(proposal!=='constant_additive'||!ds.trialOutcome||!ds.randomization){
+    throw new Error('The only supported confidence model is an explicitly registered constant_additive effect with randomized cluster assignment and a primary outcome');
+  }
+  return {...ds,effectModel:proposal};
+}
+
 function remember(name, ds, proposal) {
   // Register the family at dataset intake, before any NULLGARDEN results are
   // returned. Future family calls cannot change its hypotheses or seed.
@@ -48,7 +57,7 @@ function remember(name, ds, proposal) {
   }
   const registrationDigest=createHash('sha256').update(JSON.stringify({
     schema:'nullgarden.family-intake.v1',
-    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,randomization:ds.randomization??null,trialOutcome:ds.trialOutcome??null,y:ds.y,X:ds.X,features:ds.features},
+    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,randomization:ds.randomization??null,trialOutcome:ds.trialOutcome??null,effectModel:ds.effectModel??null,y:ds.y,X:ds.X,features:ds.features},
     family
   })).digest('hex');
   const id=randomUUID();
@@ -67,6 +76,7 @@ function describe(id) {
       : 'cluster_disjoint_within_cluster_permutation'}:{}),
     ...(ds.randomization?{randomization:ds.randomization}:{}),
     ...(ds.trialOutcome?{trialOutcomeRegistration:ds.trialOutcome}:{}),
+    ...(ds.effectModel?{effectModel:ds.effectModel}:{}),
     features: ds.features.length, design: designTable(ds), model: MODEL,
     familyRegistration: {lockedAt:'dataset_intake',sha256:registrationDigest,...family} };
 }
@@ -93,12 +103,12 @@ export function makeServer() {
         if (b.csv) { ds = parseCsv(String(b.csv)); name = String(b.name || 'Uploaded CSV').slice(0, 80); }
         else if (SCENARIOS[b.scenario]) { ds = SCENARIOS[b.scenario].make(); name = SCENARIOS[b.scenario].name; }
         else return send(400, { error: 'Unknown scenario.' });
-        ds=registerTrialOutcome(registerRandomization(ds,b.randomization),b.trialOutcome);
+        ds=registerEffectModel(registerTrialOutcome(registerRandomization(ds,b.randomization),b.trialOutcome),b.effectModel);
         return send(200, describe(remember(name, ds, b.family)));
       }
-      if (req.method === 'POST' && ['/api/run', '/api/family', '/api/trial-outcome', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
+      if (req.method === 'POST' && ['/api/run', '/api/family', '/api/trial-outcome', '/api/trial-confidence', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
-        if (Object.hasOwn(b,'randomization')||Object.hasOwn(b,'trialOutcome')) throw new Error('Treatment assignment and primary trial outcome are immutable after /api/dataset intake; reload dataset to preregister a distinct trial');
+        if (Object.hasOwn(b,'randomization')||Object.hasOwn(b,'trialOutcome')||Object.hasOwn(b,'effectModel')) throw new Error('Treatment assignment, primary outcome, and additive model are immutable after /api/dataset intake; reload dataset to preregister a distinct trial');
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
         if (url.pathname === '/api/trial-outcome') {
@@ -109,6 +119,14 @@ export function makeServer() {
             throw new Error('No primary trial outcome was registered when this dataset was loaded');
           }
           return send(200,{...runClusterTrialOutcome(entry.ds),
+            registrationDigest:entry.registrationDigest,lockedAt:'dataset_intake'});
+        }
+        if (url.pathname === '/api/trial-confidence') {
+          if (Object.keys(b).some(key=>key!=='datasetId')) {
+            throw new Error('Effect model, outcome, test and confidence level are all frozen at dataset intake; only datasetId is accepted');
+          }
+          if (!entry.ds.effectModel)throw new Error('No constant-additive effect model was registered at dataset intake');
+          return send(200,{...runTrialConfidenceSet(entry.ds),
             registrationDigest:entry.registrationDigest,lockedAt:'dataset_intake'});
         }
         if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));
@@ -135,7 +153,8 @@ export function makeServer() {
         const run = runControls(entry.ds, controlsFrom(b), { stopping: 'decision' });
         const main=toMarkdown(entry.name, run, b.narrative ? String(b.narrative).slice(0, 4000) : '');
         const trial=entry.ds.trialOutcome ? '\n'+trialOutcomeMarkdown(runClusterTrialOutcome(entry.ds)) : '';
-        return send(200,main+trial,'text/markdown; charset=utf-8');
+        const confidence=entry.ds.effectModel ? '\n'+trialConfidenceMarkdown(runTrialConfidenceSet(entry.ds)) : '';
+        return send(200,main+trial+confidence,'text/markdown; charset=utf-8');
       }
       if (req.method === 'GET') {
         const f = url.pathname === '/' ? '/index.html' : url.pathname;
