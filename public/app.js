@@ -62,6 +62,7 @@ $('#run').addEventListener('click', async () => {
 const lo = 0.2, hi = 1.0, pos = (v) => Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
 function drawOut() {
   $('#out').hidden = false;
+  $('#classificationCap').hidden = !ds.trialOutcomeRegistration;
   const v = run.verdict;
   $('#verdict').className = 'verdict ' + v.id;
   $('#verdict').innerHTML = `<b>${esc(v.label)}</b><span>${esc(v.text)}</span>`;
