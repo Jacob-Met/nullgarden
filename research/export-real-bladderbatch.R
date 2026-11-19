@@ -59,7 +59,7 @@ export_case("cancer-v-biopsy-only",raw_pheno %in% c("Cancer","Biopsy"),
             binary,paste0(output,".cancer-v-biopsy.csv"))
 cat("source_package=bladderbatch_1.50.0 (Bioconductor 3.23)\n")
 cat("expression_provenance=original RMA-normalized bladderEset assays\n")
-cat("n_rows=",nrow(csv)," n_probes=",length(picks),
+cat("n_rows=",ncol(expr)," n_probes=",length(picks),
     " n_batches=",length(unique(batch)),"\n",sep="")
 cat("cancer_positive_label=Cancer; reference_in_primary=Biopsy+Normal; no assertion of reference-tissue comparability\n")
 cat("identity_limitation=sample IDs are not verified donor identities; no subject exchangeability is established\n")
