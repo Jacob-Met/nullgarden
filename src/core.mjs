@@ -304,6 +304,6 @@ export function toMarkdown(name, run, narrative) {
   L.push('', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   if (narrative) L.push('', '## Nemotron explanation (figures checked against the table above)', '', narrative);
-  L.push('', '## Corrected evaluation candidate', '', 'Report leave-one-batch-out AUC and the batch-centered mixed-batch AUC next to the batch-only baseline. Treat only the amount above the within-batch permutation null as evidence of learned signal.');
+  L.push('', '## Corrected evaluation candidate', '', 'Report mean per-mixed-heldout-batch AUC (pure-label heldouts excluded; at least two mixed groups needed) and training-fold-only batch-centered AUC next to the batch-only baseline. Scores pooled across separately fitted heldout-batch models are only diagnostic, not cross-batch discrimination evidence. Treat only the amount above the within-batch permutation null as tentative evidence of learned signal.');
   return L.join('\n') + '\n';
 }
