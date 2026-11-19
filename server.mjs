@@ -19,7 +19,10 @@ function remember(name, ds) {
 }
 function describe(id) {
   const { name, ds } = store.get(id);
-  return { datasetId: id, name, n: ds.y.length, features: ds.features.length, design: designTable(ds), model: MODEL };
+  return { datasetId: id, name, n: ds.y.length,
+    nUnits: ds.unit ? new Set(ds.unit).size : ds.y.length,
+    permutationUnit: ds.unit ? 'unit' : 'sample',
+    features: ds.features.length, design: designTable(ds), model: MODEL };
 }
 async function body(req, limit = 6e6) {
   let size = 0; const chunks = [];
