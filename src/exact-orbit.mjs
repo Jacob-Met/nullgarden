@@ -67,7 +67,30 @@ export function conditionalClusters(batch,labels,subject,cluster) {
   return [...byCluster.values()];
 }
 
-function groupsOf(batch,labels,subject,cluster=null) {
+// Dependency clusters and randomization units are scientifically distinct.
+ // Cluster treatment assignment requires explicit registration upstream.
+function groupsOf(batch,labels,subject,cluster=null,assignmentUnit='subject') {
+  if(assignmentUnit==='cluster') {
+    if(cluster===null) {
+      const e=new Error('Cluster-randomized assignment requires subject_id and cluster_id');
+      e.code='CLUSTER_ASSIGNMENT_METADATA_MISSING';throw e;
+    }
+    const byBatch=new Map();
+    for(const group of conditionalClusters(batch,labels,subject,cluster)) {
+      const label=group.units[0].label;
+      if(group.units.some(unit=>unit.label!==label)) {
+        const e=new Error('Cluster-randomized assignment has mixed treatment labels within cluster '+group.id);
+        e.code='CLUSTER_LABEL_MIXED';throw e;
+      }
+      if(!byBatch.has(group.batch))byBatch.set(group.batch,[]);
+      byBatch.get(group.batch).push({
+        id:group.id,batch:group.batch,label,
+        indices:group.units.flatMap(unit=>unit.indices)
+      });
+    }
+    return [...byBatch.values()];
+  }
+  if(assignmentUnit!=='subject')throw new TypeError('Unsupported assignment unit '+assignmentUnit);
   if(cluster!==null)return conditionalClusters(batch,labels,subject,cluster).map(g=>g.units);
   const byBatch=new Map();
   for(const unit of conditionalUnits(batch,labels,subject)){
@@ -79,13 +102,13 @@ function groupsOf(batch,labels,subject,cluster=null) {
 
 // Orbit cardinality is the number of allocations of unit labels. A subject
 // with twenty observations contributes ONE slot, not twenty pseudo-replicates.
-export function conditionalOrbitSize(batch, labels, cap = 4096, subject = null, cluster = null) {
+export function conditionalOrbitSize(batch, labels, cap = 4096, subject = null, cluster = null, assignmentUnit = 'subject') {
   if (!Number.isSafeInteger(cap) || cap < 1) {
     throw new RangeError('Conditional-orbit cap must be a positive safe integer');
   }
   let size = 1n;
   const limit = BigInt(cap);
-  for (const group of groupsOf(batch, labels, subject, cluster)) {
+  for (const group of groupsOf(batch, labels, subject, cluster, assignmentUnit)) {
     const n = group.length, positives = group.filter((u) => u.label === 1).length;
     const k = Math.min(positives, n - positives);
     let ways = 1n;
@@ -112,14 +135,14 @@ function* choose(n, count, start = 0, selected = []) {
 }
 
 export function* conditionalLabelAssignments(batch, labels,
-  {maxAssignments = 4096, subject = null, cluster = null} = {}) {
-  const size = conditionalOrbitSize(batch, labels, maxAssignments, subject, cluster);
+  {maxAssignments = 4096, subject = null, cluster = null, assignmentUnit = 'subject'} = {}) {
+  const size = conditionalOrbitSize(batch, labels, maxAssignments, subject, cluster, assignmentUnit);
   if (size > maxAssignments) {
     const error = new RangeError('Conditional label orbit exceeds exact enumeration budget; choose bounded Monte Carlo instead');
     error.code = 'CONDITIONAL_ORBIT_TOO_LARGE';
     throw error;
   }
-  const groups = groupsOf(batch, labels, subject, cluster);
+  const groups = groupsOf(batch, labels, subject, cluster, assignmentUnit);
   const current = new Array(labels.length).fill(0);
   function* walk(groupIndex) {
     if (groupIndex === groups.length) {
@@ -141,10 +164,10 @@ export function* conditionalLabelAssignments(batch, labels,
 
 // Uniform within-batch Fisher-Yates of unit labels; repeated rows can never
 // be separated and observed per-batch unit-label counts are fixed.
-export function sampleConditionalLabels(batch, labels, random, subject = null, cluster = null) {
+export function sampleConditionalLabels(batch, labels, random, subject = null, cluster = null, assignmentUnit = 'subject') {
   if (typeof random !== 'function') throw new TypeError('A seeded random generator is required');
   const result = labels.slice();
-  for (const group of groupsOf(batch, labels, subject, cluster)) {
+  for (const group of groupsOf(batch, labels, subject, cluster, assignmentUnit)) {
     const shuffled = group.map((u) => u.label);
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(random() * (i + 1));

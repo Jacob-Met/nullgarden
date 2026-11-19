@@ -116,6 +116,31 @@ When different subjects share a household, pedigree, site, or other scientifical
 
 **Scientific boundary:** This only models `subject` nested in `cluster` nested in `batch`. Within-cluster **subject exchangeability under the null** is an unverified design assumption; unrelated families must not be given the same cluster label, and family/site IDs alone do not establish biological independence or causal identification. Families spanning sites/batches, longitudinal outcome switching, arbitrary multilevel pedigrees, informative cluster-size selection and cross-site confounding require a separate scientifically specified randomization group. No assumed fallback silently guesses such a design. For the primary statistical justification see <https://pmc.ncbi.nlm.nih.gov/articles/PMC4644991/> (Winkler et al., *Multi-level block permutation*, NeuroImage 2015).
 
+
+## Predeclared whole-cluster randomized trials (different from dependency blocks)
+
+If **the entire cluster was assigned one treatment label by a known experimental randomization protocol**, the observational nested-cluster null above can be too restrictive: every subject in one family/site/cluster has the same label, so its within-cluster exchangeability orbit has size 1. NULLGARDEN now supports a separately registered treatment-*allocation* unit. Registration must be made when the dataset is first loaded, not after viewing results:
+
+```json
+{
+  "csv": "sample_id,batch,label,subject_id,cluster_id,feature_1,...\n...",
+  "randomization": {
+    "unit": "cluster",
+    "mechanism": "uniform_within_batch",
+    "protocolId": "PREREGISTERED-TRIAL-ID"
+  },
+  "family": {"ks": [1, 2], "seed": 31, "perms": 127}
+}
+```
+
+Pass this JSON to `POST /api/dataset`, then use the returned `datasetId` with `POST /api/run`, `POST /api/family` or `POST /api/report`. The web **Load CSV** control also exposes an opt-in **Registered cluster trial** checkbox and required protocol ID. The intake family digest covers both the original measurements and the asserted treatment-allocation protocol. Historical randomization is **not independently verified** by a text ID.
+
+**What changes:** within each batch/randomization stratum, exchange labels between **entire clusters** rather than between subjects within clusters. Every subject and all its repeated measurements stay together; complete clusters remain disjoint across CV train/test; AUROC is still averaged per heldout subject and fold. The conditional exact assignment count is `product_strata choose(number_of_clusters, treated_clusters)`, independent of cluster size. Small orbits are exhaustively enumerated with ties counted; large orbits use the predeclared fixed-budget Monte Carlo p bound. The immutable Holm family reuses the same registered assignment scheme. The default (no `randomization` object) retains the observational within-cluster subject null **without change**.
+
+**Independent locked oracle:** six strata with two clusters each provide **64** legal allocations even with multiple related subjects and repeated rows inside every cluster. A separate bitmask reference computes every legal label vector, CV statistic, exact p and the entire finite-null Type-I envelope; it never consults the candidate enumeration. Mixed treatment labels inside a cluster, missing cluster/subject IDs, unknown assignment mechanisms, and post-hoc family changes are rejected. This is consistent with the restricted/whole-block permutation distinction in Winkler et al. (2015), *Multi-level block permutation*, [doi:10.1016/j.neuroimage.2015.05.092](https://doi.org/10.1016/j.neuroimage.2015.05.092).
+
+**Scope:** Validity depends on actual `uniform_within_batch` cluster assignment, conditional on the treated-cluster count in each stratum, under the sharp randomization null and no interference. A protocol ID cannot prove compliance. Arbitrary observational clusters, unequal allocation probabilities, nonuniform adaptive assignment, site-wide unmeasured interference, and restricted randomization beyond explicit strata are **not supported**. This pipeline tests whether a *predictive CV statistic* is unusual under a sharp null; it does not estimate an average treatment effect or justify a causal claim by itself.
+
 ## Exact batch-conditional randomization for tractable designs
 
 NULLGARDEN now checks the size of the *complete* conditional label orbit before drawing random shuffles. With batch (b) containing (n_b) observations and (k_b) positive labels, there are exactly `product_b choose(n_b, k_b)` distinct allocations consistent with the observed within-batch positive counts. It uses bounded, overflow-safe integer combinatorics and a **lazy** joint assignment enumerator (no factorial-sized array, no duplicate arrangements of indistinguishable labels). If the orbit fits both a 512-assignment ceiling and a deterministic estimated-work budget of 25 million feature/sample/fold operations, it evaluates **every** allocation using the same three-repeat foldwise AUROC statistic and fixed CV seed, with the observed allocation included exactly once.

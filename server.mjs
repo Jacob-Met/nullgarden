@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, extname } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits, conditionalClusters } from './src/core.mjs';
+import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits, conditionalClusters, conditionalOrbitSize } from './src/core.mjs';
 import { SCENARIOS, parseCsv } from './src/data.mjs';
 import { runFamilywiseK, planFamilywiseK } from './src/familywise.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
@@ -11,6 +11,26 @@ import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, chec
 const here = dirname(fileURLToPath(import.meta.url));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' };
 const store = new Map();
+
+// Randomization is a declared experimental design, never inferred from
+// observed labels or a shared cluster_id. Capture it once at dataset intake.
+function registerRandomization(ds, request) {
+  if(request===undefined||request===null)return ds;
+  if(!request||typeof request!=='object'||Array.isArray(request)
+    ||Object.keys(request).sort().join(',')!=='mechanism,protocolId,unit'
+    ||request.unit!=='cluster'||request.mechanism!=='uniform_within_batch'
+    ||typeof request.protocolId!=='string'
+    ||!request.protocolId.trim()||request.protocolId.length>200) {
+    throw new Error('Register exact randomization {unit:"cluster",mechanism:"uniform_within_batch",protocolId:"..."} at dataset intake; no observational inference upgrade');
+  }
+  if(!ds.subject||!ds.cluster) {
+    throw new Error('Cluster-randomized assignment requires subject_id and cluster_id columns');
+  }
+  // Enforce whole-cluster, uniform-label, batch-nested trial allocation
+  // before storing any registration or computing a scientific score.
+  conditionalOrbitSize(ds.batch,ds.y,1,ds.subject,ds.cluster,'cluster');
+  return {...ds,randomization:Object.freeze({...request})};
+}
 
 function remember(name, ds, proposal) {
   // Register the family at dataset intake, before any NULLGARDEN results are
@@ -21,7 +41,7 @@ function remember(name, ds, proposal) {
   }
   const registrationDigest=createHash('sha256').update(JSON.stringify({
     schema:'nullgarden.family-intake.v1',
-    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,y:ds.y,X:ds.X,features:ds.features},
+    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,randomization:ds.randomization??null,y:ds.y,X:ds.X,features:ds.features},
     family
   })).digest('hex');
   const id=randomUUID();
@@ -35,7 +55,10 @@ function describe(id) {
   const clusters=ds.cluster?conditionalClusters(ds.batch,ds.y,ds.subject,ds.cluster):null;
   return { datasetId: id, name, n: ds.y.length, nSubjects: units.length,
     subjectMode: ds.subject ? 'declared_subject_blocks' : 'assumed_independent_rows',
-    ...(clusters?{nClusters:clusters.length,nestedClusterMode:'cluster_disjoint_within_cluster_permutation'}:{}),
+    ...(clusters?{nClusters:clusters.length,nestedClusterMode:ds.randomization
+      ? 'cluster_disjoint_whole_cluster_randomization'
+      : 'cluster_disjoint_within_cluster_permutation'}:{}),
+    ...(ds.randomization?{randomization:ds.randomization}:{}),
     features: ds.features.length, design: designTable(ds), model: MODEL,
     familyRegistration: {lockedAt:'dataset_intake',sha256:registrationDigest,...family} };
 }
@@ -62,10 +85,12 @@ export function makeServer() {
         if (b.csv) { ds = parseCsv(String(b.csv)); name = String(b.name || 'Uploaded CSV').slice(0, 80); }
         else if (SCENARIOS[b.scenario]) { ds = SCENARIOS[b.scenario].make(); name = SCENARIOS[b.scenario].name; }
         else return send(400, { error: 'Unknown scenario.' });
+        ds=registerRandomization(ds,b.randomization);
         return send(200, describe(remember(name, ds, b.family)));
       }
       if (req.method === 'POST' && ['/api/run', '/api/family', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
+        if (Object.hasOwn(b,'randomization')) throw new Error('Randomization mechanism is immutable after /api/dataset intake; reload the dataset to register a distinct trial');
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
         if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));

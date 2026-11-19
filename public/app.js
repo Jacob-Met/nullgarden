@@ -29,7 +29,7 @@ function loadScenario(id) {
 }
 
 function drawBeds() {
-  $('#plateCap').textContent = `${ds.name}: ${ds.n} measurement rows, ${ds.nSubjects} ${ds.subjectMode === 'declared_subject_blocks' ? 'declared subject units (blocked CV + permutation)' : 'assumed independent rows (subject dependence unverified)'}, ${ds.features} features. Each column is a batch. Filled dot = label 1, ring = label 0.`;
+  $('#plateCap').textContent = `${ds.name}: ${ds.n} measurement rows, ${ds.nSubjects} ${ds.subjectMode === 'declared_subject_blocks' ? 'declared subject units' : 'assumed independent rows'}${ds.randomization ? ', registered uniform whole-cluster allocation (protocol '+ds.randomization.protocolId+'; actual randomization NOT independently verified)' : ''}, ${ds.features} features. Each column is a batch. Filled dot = label 1, ring = label 0.`;
   $('#beds').innerHTML = ds.design.map((b) => `<div class="bed ${b.mixed ? 'mixed' : ''}" style="--n:${b.n}"><div class="dots" role="img" aria-label="Batch ${esc(b.batch)}: ${b.pos} label 1, ${b.neg} label 0">${b.samples.map((s) => `<i class="d ${s.y ? 'p' : 'n'}"></i>`).join('')}</div><div class="bed-l"><b>Batch ${esc(b.batch)}</b>${b.pos} / ${b.neg} <span class="tag">${b.mixed ? 'mixed' : 'pure'}</span></div></div>`).join('');
 }
 
@@ -113,9 +113,19 @@ $('#dl').addEventListener('click', async () => {
   const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = 'nullgarden-report.md'; a.click();
 });
 
+$('#trialMode').addEventListener('change', () => {
+  $('#trialProtocol').disabled = !$('#trialMode').checked;
+});
 $('#csvFile').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (!f) return;
   document.querySelectorAll('#scenarios button').forEach((b) => b.setAttribute('aria-selected', 'false'));
-  await setDataset({ csv: await f.text(), name: f.name }); e.target.value = '';
+  const randomization=$('#trialMode').checked
+    ? {unit:'cluster',mechanism:'uniform_within_batch',protocolId:$('#trialProtocol').value.trim()}
+    : undefined;
+  if(randomization && !randomization.protocolId){
+    alert('Enter the preregistered trial protocol ID before loading a cluster-randomized design.');
+    e.target.value=''; return;
+  }
+  await setDataset({ csv: await f.text(), name: f.name, ...(randomization?{randomization}:{}) }); e.target.value = '';
 });
 init();
