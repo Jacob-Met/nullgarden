@@ -18,9 +18,12 @@ label_values <- sort(unique(as.character(pheno$cancer)))
 cat("observed_original_cancer_values=",paste(label_values,collapse="|"),"\n",sep="")
 cat("observed_original_cancer_counts=",paste(capture.output(print(table(pheno$cancer,useNA="ifany"))),collapse="; "), "\n",sep="")
 cat("observed_original_outcome_counts=",paste(capture.output(print(table(pheno$outcome,useNA="ifany"))),collapse="; "), "\n",sep="")
-if (length(label_values)!=2 || anyNA(label_values) || any(!nzchar(label_values)))
-  stop("Expected two nonempty cancer factor groups")
-binary <- as.integer(match(as.character(pheno$cancer), label_values)-1L)
+if (!identical(label_values,c("Biopsy","Cancer","Normal")))
+  stop("Pinned three-level bladderbatch phenotype changed; requalify the cancer/normal/biopsy mapping")
+raw_pheno <- as.character(pheno$cancer)
+# Primary contrast deliberately merges two DISTINCT reference phenotypes.
+# The meaning is Cancer vs not-annotated-Cancer, not healthy-vs-disease.
+binary <- as.integer(raw_pheno == "Cancer")
 batch <- as.character(pheno$batch)
 if (length(unique(batch))!=5) stop("Expected five processing batches")
 if (length(unique(rownames(pheno)))!=57) stop("Nonunique original observation IDs")
@@ -30,21 +33,34 @@ RNGkind(kind="Mersenne-Twister", normal.kind="Inversion", sample.kind="Rejection
 set.seed(20261118)
 picks <- sort(sample.int(nrow(expr), 200L, replace=FALSE))
 chosen <- t(expr[picks,,drop=FALSE])
-csv <- data.frame(sample_id=rownames(pheno),batch=batch,label=binary,
-                  chosen,check.names=FALSE,stringsAsFactors=FALSE)
-colnames(csv) <- c("sample_id","batch","label",paste0("probe",picks))
 output <- Sys.getenv("NULLGARDEN_REAL_CSV")
 if (!nzchar(output)) stop("NULLGARDEN_REAL_CSV destination is required")
-write.table(csv,file=output,sep=",",row.names=FALSE,col.names=TRUE,
-            quote=FALSE,na="")
+options(digits=17)
+export_case <- function(name, keep, labels, path) {
+  csv <- data.frame(sample_id=rownames(pheno)[keep],batch=batch[keep],
+                    label=labels[keep],chosen[keep,,drop=FALSE],
+                    check.names=FALSE,stringsAsFactors=FALSE)
+  colnames(csv) <- c("sample_id","batch","label",paste0("probe",picks))
+  write.table(csv,file=path,sep=",",row.names=FALSE,col.names=TRUE,
+              quote=FALSE,na="")
+  cat("contrast=",name," rows=",nrow(csv)," batches=",length(unique(csv$batch)),
+      " reference_label0=",sum(csv$label==0),
+      " cancer_label1=",sum(csv$label==1),"\n",sep="")
+  for (b in sort(unique(csv$batch))) {
+    counts <- table(factor(csv$label[csv$batch==b],levels=0:1))
+    cat("contrast=",name," batch=",b," n_reference=",counts[1],
+        " n_cancer=",counts[2],"\n",sep="")
+  }
+}
+export_case("cancer-v-two-distinct-reference-groups",rep(TRUE,57),binary,output)
+export_case("cancer-v-normal-only",raw_pheno %in% c("Cancer","Normal"),
+            binary,paste0(output,".cancer-v-normal.csv"))
+export_case("cancer-v-biopsy-only",raw_pheno %in% c("Cancer","Biopsy"),
+            binary,paste0(output,".cancer-v-biopsy.csv"))
 cat("source_package=bladderbatch_1.50.0 (Bioconductor 3.23)\n")
 cat("expression_provenance=original RMA-normalized bladderEset assays\n")
 cat("n_rows=",nrow(csv)," n_probes=",length(picks),
     " n_batches=",length(unique(batch)),"\n",sep="")
-cat("cancer_label_0=",label_values[1]," cancer_label_1=",label_values[2],"\n",sep="")
-for (b in sort(unique(batch))) {
-  counts <- table(factor(binary[batch==b],levels=0:1))
-  cat("batch=",b," n_label0=",counts[1]," n_label1=",counts[2],"\n",sep="")
-}
+cat("cancer_positive_label=Cancer; reference_in_primary=Biopsy+Normal; no assertion of reference-tissue comparability\n")
 cat("identity_limitation=sample IDs are not verified donor identities; no subject exchangeability is established\n")
 cat("probe_selection=frozen seed 20261118; unsupervised 200 of ",nrow(expr)," probes\n",sep="")
