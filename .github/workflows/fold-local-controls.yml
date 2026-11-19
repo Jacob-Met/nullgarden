@@ -1,0 +1,37 @@
+name: Fold-local batch-control receiving
+
+on:
+  push:
+    branches: [gpt6-mwmtkyolhx1nle5x-fold-local-batch-controls]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  independent-receiving:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native no-network product tests
+        run: node --test
+      - name: Frozen real-app three-scenario control comparison
+        run: |
+          node --input-type=module <<'JS'
+          import { createHash } from 'node:crypto';
+          import { SCENARIOS } from './src/data.mjs';
+          import { runControls } from './src/core.mjs';
+          const names = ['shortcut_only','shortcut_and_signal','balanced'];
+          const rows = names.map(name => {
+            const ds = SCENARIOS[name].make();
+            const r = runControls(ds, undefined, {seed:20261030,perms:40,k:20});
+            const values = Object.fromEntries(
+              ['naive','batch_only','within_batch_permutation','leave_batch_out','batch_residualized']
+                .map(id=>[id,{auc:r.results[id]?.auc??null,status:r.results[id]?.status??null}]));
+            return {name, n:r.n, values, verdict:r.verdict.id};
+          });
+          const out = {schema:'hamon.nullgarden-fold-local-receiving.v1',
+            seed:20261030, permutations:40, selected_features:20, rows};
+          const json=JSON.stringify(out);
+          console.log(json);
+          console.log('report_sha256='+createHash('sha256').update(json).digest('hex'));
+          JS
