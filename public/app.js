@@ -87,7 +87,7 @@ function markHypotheses() {
     } else if (r.status === 'shortcut') {
       chip.textContent = `Supported: ${r.title} flags it (AUC ${r.auc.toFixed(2)})`;
     } else if (r.status === 'signal') {
-      chip.textContent = `Not supported: ${r.title} found signal (AUC ${r.auc.toFixed(2)})`;
+      chip.textContent = `Not supported: ${r.title} found signal (${r.auc === null ? 'conservative p <= ' + r.p.toFixed(3) : 'AUC ' + r.auc.toFixed(2)})`;
     } else {
       chip.textContent = `Inconclusive: ${r.title} (AUC ${r.auc === null ? 'n/a' : r.auc.toFixed(2)})`;
     }
