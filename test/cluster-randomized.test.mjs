@@ -10,9 +10,9 @@ import {makeServer} from '../server.mjs';
 // each per cluster. All CV folds must exclude complete clusters. The feature
 // signals are arbitrary fixed measurements under the sharp randomization null;
 // finite-sample Type-I validity is tested over ALL 2^6 assignments.
-function trial() {
+function trial(strata=6) {
   const ids=[],subject=[],cluster=[],batch=[],y=[],X=[];
-  for(let b=0;b<6;b++)for(let c=0;c<2;c++)for(let s=0;s<2;s++)for(let r=0;r<2;r++){
+  for(let b=0;b<strata;b++)for(let c=0;c<2;c++)for(let s=0;s<2;s++)for(let r=0;r<2;r++){
     const id='B'+b+'C'+c,sub=id+'S'+s;
     ids.push(sub+'R'+r);
     subject.push(sub);cluster.push(id);batch.push('B'+b);y.push(c);
@@ -91,6 +91,47 @@ test('independent clusters never split in either exact or sampled assignments',(
   assert.equal(p.nullSampling,'no_nested_cluster_contrast');
   assert.equal(p.status,'unavailable');
   assert.equal(p.p,null);
+});
+
+test('variable cluster sizes keep allocation units, not row counts; large orbits use preregistered Monte Carlo',()=>{
+  const ds=trial();
+  const extra=[0,1,2,3,4,5,6].map((j)=>j*4);
+  for(const i of extra){
+    const id=ds.ids[i]+'-EXTRA';
+    ds.ids.push(id);ds.subject.push(ds.subject[i]);
+    ds.cluster.push(ds.cluster[i]);ds.batch.push(ds.batch[i]);
+    ds.y.push(ds.y[i]);ds.X.push(ds.X[i].slice());
+  }
+  assert.equal(conditionalOrbitSize(ds.batch,ds.y,512,ds.subject,ds.cluster,'cluster'),64);
+  const allocations=[...conditionalLabelAssignments(ds.batch,ds.y,
+    {maxAssignments:512,subject:ds.subject,cluster:ds.cluster,assignmentUnit:'cluster'})];
+  assert.equal(allocations.length,64);
+  for(const assignment of allocations){
+    const byCluster=new Map(),byBatch=new Map();
+    assignment.forEach((v,i)=>{
+      if(!byCluster.has(ds.cluster[i]))byCluster.set(ds.cluster[i],v);
+      assert.equal(v,byCluster.get(ds.cluster[i]));
+    });
+    for(const [cl,v] of byCluster){
+      const stratum=cl.slice(0,cl.indexOf('C'));
+      byBatch.set(stratum,(byBatch.get(stratum)||0)+v);
+    }
+    assert.ok([...byBatch.values()].every(v=>v===1));
+  }
+  // Critical physical distinction: treatment counts in *rows* can vary
+  // across valid allocations if cluster sizes differ.
+  assert.ok(new Set(allocations.map(a=>a.filter(Boolean).length)).size>1);
+
+  const big=trial(10),mc=runControls(big,['within_batch_permutation'],
+    {seed:31,k:1,perms:19,stopping:'fixed'});
+  const p=mc.results.within_batch_permutation;
+  assert.equal(conditionalOrbitSize(big.batch,big.y,512,big.subject,big.cluster,'cluster'),513);
+  assert.equal(p.nullSampling,'cluster_randomization_fixed_statistic');
+  assert.equal(p.pExact,true,'complete fixed Monte Carlo budget, not full orbit');
+  assert.equal(p.permsRun,19);
+  assert.equal(p.permsBudget,19);
+  assert.equal(p.orbitSize,513,'saturated orbit exceeds exact enumeration cap');
+  assert.ok(p.p>=1/20&&p.p<=1);
 });
 
 test('refuse unsupported experimental mechanism, absent metadata, and mixed-label treatment clusters',()=>{
