@@ -103,7 +103,19 @@ function prepare(ds,plan){
     return stableMean(contrasts,'equal-stratum treatment contrast');
   };
   return {statistic,summary,unsupported,nClusters:clusterGroups.length,
-    nSubjects:clusterGroups.reduce((n,g)=>n+g.units.length,0)};
+    nSubjects:clusterGroups.reduce((n,g)=>n+g.units.length,0),
+    blocksByStratum:[...strata].map(([batch,units])=>({batch,units}))};
+}
+
+// Exact inversion reuses the same primary-outcome reduction and nesting as
+// the shipped Fisher p-value. A distinct reducer would silently change the
+// estimand or allow technical replicates to re-enter as allocation units.
+export function trialClusterBlocks(ds,plan=ds.trialOutcome){
+  const registered=planClusterTrialOutcome(ds,plan);
+  const reduced=prepare(ds,registered);
+  return {blocksByStratum:reduced.blocksByStratum,
+    summary:reduced.summary,unsupported:reduced.unsupported,
+    nClusters:reduced.nClusters,nSubjects:reduced.nSubjects};
 }
 
 function exceeds(candidate,observed){
