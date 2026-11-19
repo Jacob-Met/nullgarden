@@ -19,22 +19,47 @@ export function holmAdjust(pValues) {
   return adjusted;
 }
 
-export function runFamilywiseK(ds, {ks, seed=20261030, perms=100, stopping='decision', alpha=0.05}={}) {
+
+export function planFamilywiseK(ds, spec={}) {
+  if (spec === null || typeof spec !== 'object' || Array.isArray(spec)) {
+    throw new TypeError('Family registration requires a JSON object fixed at dataset intake');
+  }
+  const allowed = new Set(['ks','seed','perms','stopping','alpha']);
+  const unexpected = Object.keys(spec).filter(key=>!allowed.has(key));
+  if (unexpected.length) {
+    throw new Error('Unknown family registration field(s): '+unexpected.join(', '));
+  }
   if (!Array.isArray(ds.X) || !Array.isArray(ds.X[0]) || !ds.X[0].length) {
     throw new TypeError('Familywise model family requires an explicit nonempty feature matrix');
   }
   const nFeatures=ds.X[0].length;
-  const chosen=ks === undefined
+  const chosen=spec.ks === undefined
     ? [...new Set([1,Math.min(5,nFeatures),Math.min(20,nFeatures)])]
-    : ks;
+    : spec.ks;
   if (!Array.isArray(chosen) || !chosen.length || chosen.length>8
       || chosen.some(k=>!Number.isSafeInteger(k)||k<1||k>nFeatures)
       || new Set(chosen).size!==chosen.length) {
     throw new RangeError('Predeclare 1..8 DISTINCT integer top-k pipeline sizes within feature count; repeated or postselected hypotheses are unsupported');
   }
+  const seed=spec.seed ?? 20261030, perms=spec.perms ?? 100;
+  const stopping=spec.stopping ?? 'decision', alpha=spec.alpha ?? 0.05;
+  if (!Number.isSafeInteger(seed) || seed<0 || seed>4294967295) {
+    throw new RangeError('Family seed must be an unsigned 32-bit integer fixed before analysis');
+  }
+  if (!Number.isSafeInteger(perms) || perms<1 || perms>1000) {
+    throw new RangeError('Family permutation budget must be a preregistered integer 1..1000');
+  }
+  if (!['fixed','decision'].includes(stopping)) {
+    throw new RangeError('Family stopping rule must be fixed or decision');
+  }
   if (!Number.isFinite(alpha) || alpha<=0 || alpha>=1) {
     throw new RangeError('Familywise alpha must be strictly between 0 and 1');
   }
+  return Object.freeze({ks:Object.freeze(chosen.slice()),seed,perms,stopping,alpha});
+}
+
+export function runFamilywiseK(ds, spec={}) {
+  const {ks:chosen,seed,perms,stopping,alpha}=planFamilywiseK(ds,spec);
   const marginal=chosen.map(k=>runControls(ds,['within_batch_permutation'],
     {seed,perms,k,stopping}).results.within_batch_permutation);
   const valid=marginal.every(r=>r && Number.isFinite(r.p) && r.p>=0 && r.p<=1);

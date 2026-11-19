@@ -2,28 +2,40 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, extname } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits } from './src/core.mjs';
 import { SCENARIOS, parseCsv } from './src/data.mjs';
-import { runFamilywiseK } from './src/familywise.mjs';
+import { runFamilywiseK, planFamilywiseK } from './src/familywise.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' };
 const store = new Map();
 
-function remember(name, ds) {
-  const id = randomUUID();
-  store.set(id, { name, ds });
-  if (store.size > 20) store.delete(store.keys().next().value);
+function remember(name, ds, proposal) {
+  // Register the family at dataset intake, before any NULLGARDEN results are
+  // returned. Future family calls cannot change its hypotheses or seed.
+  const family=planFamilywiseK(ds, proposal ?? {});
+  if (family.stopping !== 'decision' || family.alpha !== 0.05) {
+    throw new Error('The public family API fixes alpha=0.05 and decision stopping at intake');
+  }
+  const registrationDigest=createHash('sha256').update(JSON.stringify({
+    schema:'nullgarden.family-intake.v1',
+    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,y:ds.y,X:ds.X,features:ds.features},
+    family
+  })).digest('hex');
+  const id=randomUUID();
+  store.set(id,{name,ds,family,registrationDigest});
+  if(store.size>20)store.delete(store.keys().next().value);
   return id;
 }
 function describe(id) {
-  const { name, ds } = store.get(id);
+  const { name, ds, family, registrationDigest } = store.get(id);
   const units = conditionalUnits(ds.batch, ds.y, ds.subject ?? null);
   return { datasetId: id, name, n: ds.y.length, nSubjects: units.length,
     subjectMode: ds.subject ? 'declared_subject_blocks' : 'assumed_independent_rows',
-    features: ds.features.length, design: designTable(ds), model: MODEL };
+    features: ds.features.length, design: designTable(ds), model: MODEL,
+    familyRegistration: {lockedAt:'dataset_intake',sha256:registrationDigest,...family} };
 }
 async function body(req, limit = 6e6) {
   let size = 0; const chunks = [];
@@ -48,15 +60,20 @@ export function makeServer() {
         if (b.csv) { ds = parseCsv(String(b.csv)); name = String(b.name || 'Uploaded CSV').slice(0, 80); }
         else if (SCENARIOS[b.scenario]) { ds = SCENARIOS[b.scenario].make(); name = SCENARIOS[b.scenario].name; }
         else return send(400, { error: 'Unknown scenario.' });
-        return send(200, describe(remember(name, ds)));
+        return send(200, describe(remember(name, ds, b.family)));
       }
       if (req.method === 'POST' && ['/api/run', '/api/family', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
         if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));
-        if (url.pathname === '/api/family') return send(200,
-          runFamilywiseK(entry.ds, {ks:b.ks,seed:b.seed,perms:b.perms,stopping:'decision'}));
+        if (url.pathname === '/api/family') {
+          if (Object.keys(b).some(key=>key!=='datasetId')) {
+            throw new Error('Family hypotheses, seed and permutation budget are locked at /api/dataset intake; /api/family accepts only datasetId');
+          }
+          return send(200,{...runFamilywiseK(entry.ds,entry.family),
+            familyLockedAt:'dataset_intake',registrationDigest:entry.registrationDigest});
+        }
         if (url.pathname === '/api/propose') {
           const r = await chat(proposePrompt(designTable(entry.ds), String(b.note || '').slice(0, 500)));
           if (!r.ok) return send(200, r);

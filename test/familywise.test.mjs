@@ -84,10 +84,15 @@ test('cold real HTTP subject_id CSV accepts predeclared family and preserves exi
     const ds=example();
     const csv=['sample_id,batch,label,subject_id,f1,f2',
       ...ds.ids.map((id,i)=>[id,ds.batch[i],ds.y[i],ds.subject[i],...ds.X[i]].join(','))].join('\n');
-    const loaded=await(await post('/api/dataset',{csv})).json();
+    const loaded=await(await post('/api/dataset',{csv,family:{ks:[1,2],seed:31,perms:50}})).json();
     assert.equal(loaded.nSubjects,10);
     assert.equal(loaded.subjectMode,'declared_subject_blocks');
-    const body={datasetId:loaded.datasetId,ks:[1,2],seed:31,perms:50};
+    const body={datasetId:loaded.datasetId};
+    assert.equal(loaded.familyRegistration.lockedAt,'dataset_intake');
+    assert.deepEqual(loaded.familyRegistration.ks,[1,2]);
+    assert.equal(loaded.familyRegistration.seed,31);
+    assert.equal(loaded.familyRegistration.perms,50);
+    assert.match(loaded.familyRegistration.sha256,/^[0-9a-f]{64}$/);
     const response=await post('/api/family',body);
     assert.equal(response.status,200);
     const result=await response.json();
@@ -95,6 +100,8 @@ test('cold real HTTP subject_id CSV accepts predeclared family and preserves exi
     assert.equal(result.tests.length,2);
     assert.ok(result.tests.every(t=>t.adjustedP>=t.rawP));
     assert.deepEqual(result.predeclaredKs,[1,2]);
+    assert.equal(result.registrationDigest,loaded.familyRegistration.sha256);
+    assert.equal(result.familyLockedAt,'dataset_intake');
     const single=await(await post('/api/run',{datasetId:loaded.datasetId,controls:['within_batch_permutation']})).json();
     assert.equal(single.unitMode,'declared_subject_blocks');
     assert.equal(single.nSubjects,10);
@@ -102,7 +109,38 @@ test('cold real HTTP subject_id CSV accepts predeclared family and preserves exi
     assert.match(report,/Subject IDs were supplied/i);
     const missing=await post('/api/family',{datasetId:'expired'});
     assert.equal(missing.status,404);
-    const invalid=await post('/api/family',{datasetId:loaded.datasetId,ks:[1,1]});
+    const altered=await post('/api/family',{datasetId:loaded.datasetId,ks:[1]});
+    assert.equal(altered.status,400);
+    assert.match((await altered.json()).error,/locked.*intake/i);
+    assert.equal((await post('/api/family',{datasetId:loaded.datasetId,seed:999})).status,400);
+    const invalid=await post('/api/dataset',{csv,family:{ks:[1,1]}});
     assert.equal(invalid.status,400);
+    const replay=await(await post('/api/family',body)).json();
+    assert.deepEqual(replay.tests,result.tests);
+    assert.equal(replay.registrationDigest,result.registrationDigest);
   } finally {await new Promise(done=>server.close(done))}
+});
+
+test('registered family retains independently witnessed subject-level positive signal after Holm correction',()=>{
+  const ds={ids:[],subject:[],batch:[],y:[],X:[],
+    features:Array.from({length:25},(_,i)=>'f'+i)};
+  for(let u=0;u<24;u++)for(let r=0;r<3;r++){
+    const label=u%2;
+    ds.ids.push('p'+u+'-'+r);
+    ds.subject.push('p'+u);
+    ds.batch.push('batch'+Math.floor(u/4));
+    ds.y.push(label);
+    const row=Array.from({length:25},(_,i)=>i===u?1:0);
+    row[24]=(label?5:-5)+((u*17+r*7)%13)/100;
+    ds.X.push(row);
+  }
+  const result=runFamilywiseK(ds,{ks:[1,25],seed:20261030,perms:199,stopping:'decision'});
+  assert.equal(result.status,'valid');
+  assert.equal(result.tests.length,2);
+  for(const t of result.tests){
+    assert.ok(t.rawP<=0.025,'marginal subject signal must survive Holm budget');
+    assert.ok(t.adjustedP<=0.05,'familywise adjusted signal must remain detectable');
+    assert.equal(t.decision,'reject');
+    assert.equal(t.nullSampling,'batch_conditional_fixed_statistic');
+  }
 });
