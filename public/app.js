@@ -50,10 +50,31 @@ $('#run').addEventListener('click', async () => {
         const metric=(label,val)=>'<div>'+esc(label)+'<b>'+esc(val)+'</b></div>';
         const estimate=trial.observedContrast===null?'unavailable':Number(trial.observedContrast).toFixed(4);
         const p=trial.p===null?'unavailable':Number(trial.p).toFixed(5);
+        const confidence=trial.confidenceSet;
+        let confidenceHtml='';
+        if(confidence){
+          const endpoint=(point,exact=false)=>{
+            const fraction=point.denominator==='1'?point.numerator:point.numerator+'/'+point.denominator;
+            return exact||point.approximate===null?fraction:'≈'+Number(point.approximate).toPrecision(6);
+          };
+          const notation=exact=>confidence.components.map(c=>c.kind==='point'
+            ? '{'+endpoint(c.lower,exact)+'}'
+            : (c.lowerClosed?'[':'(')+(c.lower?endpoint(c.lower,exact):'−∞')+', '
+              +(c.upper?endpoint(c.upper,exact):'+∞')+(c.upperClosed?']':')')).join(' ∪ ')||'empty set';
+          confidenceHtml='<h4>Constant-additive effect confidence set</h4>';
+          if(confidence.status==='available'){
+            confidenceHtml+='<p class="confidence-set"><strong>'+esc(((1-confidence.alpha)*100).toPrecision(3))+'%: '
+              +esc(notation(false))+'</strong></p><p>Square brackets include boundaries; braces mark an isolated value. Decimal values are rounded.</p>'
+              +'<details><summary>Exact endpoints and acceptance rule</summary><p class="exact-endpoints">'
+              +esc(notation(true))+'</p><p>'+esc(confidence.rule)+'</p></details>';
+          }
+          confidenceHtml+='<p>'+esc(confidence.finding)+'</p>'
+            +(confidence.assumption?'<p class="trial-limit">'+esc(confidence.assumption+' '+confidence.interpretation)+'</p>':'');
+        }
         surface.innerHTML='<h3>Preregistered randomized treatment outcome</h3>'
           +'<div class="trial-metric">'+metric('Equal-cluster outcome contrast',estimate)
           +metric('Two-sided Fisher p',p)+metric('Independent clusters',String(trial.nClusters))+'</div>'
-          +'<p>'+esc(trial.finding)+'</p><p class="trial-limit">'+esc(trial.causalLimit)+'</p>';
+          +'<p>'+esc(trial.finding)+'</p>'+confidenceHtml+'<p class="trial-limit">'+esc(trial.causalLimit)+'</p>';
       }
     }
   } finally { btn.disabled = false; btn.textContent = 'Run controls'; }
@@ -133,6 +154,8 @@ $('#dl').addEventListener('click', async () => {
 $('#trialMode').addEventListener('change', () => {
   $('#trialProtocol').disabled = !$('#trialMode').checked;
   $('#trialOutcome').disabled = !$('#trialMode').checked;
+  $('#trialConstantEffect').disabled = !$('#trialMode').checked;
+  if(!$('#trialMode').checked)$('#trialConstantEffect').checked=false;
 });
 $('#csvFile').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -146,7 +169,12 @@ $('#csvFile').addEventListener('change', async (e) => {
   }
   const outcomeFeature=$('#trialOutcome').value.trim();
   const trialOutcome=randomization&&outcomeFeature
-    ? {feature:outcomeFeature,seed:20261030,perms:199}:undefined;
+    ? {feature:outcomeFeature,seed:20261030,perms:199,
+      ...($('#trialConstantEffect').checked?{confidenceSet:{model:'constant_additive',alpha:0.05}}:{})}:undefined;
+  if(randomization&&$('#trialConstantEffect').checked&&!trialOutcome){
+    alert('Enter the preregistered primary outcome before registering its constant-effect confidence set.');
+    e.target.value='';return;
+  }
   await setDataset({ csv: await f.text(), name: f.name,
     ...(randomization?{randomization}:{}),
     ...(trialOutcome?{trialOutcome}:{}) }); e.target.value = '';

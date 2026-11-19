@@ -1,6 +1,8 @@
 import {conditionalClusters, conditionalOrbitSize, conditionalLabelAssignments,
   sampleConditionalLabels} from './exact-orbit.mjs';
 import {rng} from './core.mjs';
+import {EXACT_TRIAL_CAP,planConstantEffect,runConstantEffectConfidenceSet,
+  confidenceSetNotation} from './cluster-confidence.mjs';
 
 function numericFailure(where){
   const error=new RangeError('Trial outcome numerical range unsupported in '+where
@@ -33,8 +35,8 @@ export function planClusterTrialOutcome(ds, proposal) {
     throw new Error('A causal trial outcome requires preregistered uniform whole-cluster treatment assignment');
   }
   if (!proposal || typeof proposal!=='object' || Array.isArray(proposal)
-      || Object.keys(proposal).sort().join(',')!=='feature,perms,seed') {
-    throw new Error('Preregister the exact primary trialOutcome {feature,seed,perms} at dataset intake');
+      || !['feature,perms,seed','confidenceSet,feature,perms,seed'].includes(Object.keys(proposal).sort().join(','))) {
+    throw new Error('Preregister the exact primary trialOutcome {feature,seed,perms} with optional confidenceSet at dataset intake');
   }
   if(typeof proposal.feature!=='string'||!proposal.feature.trim()
       ||ds.features.filter(x=>x===proposal.feature).length!==1){
@@ -58,7 +60,8 @@ export function planClusterTrialOutcome(ds, proposal) {
     byBatch.set(group.batch,count);
   }
   if(!byBatch.size)throw new Error('Trial outcome requires at least one randomized stratum');
-  return Object.freeze({...proposal});
+  const confidenceSet=Object.hasOwn(proposal,'confidenceSet')?planConstantEffect(proposal.confidenceSet):undefined;
+  return Object.freeze({...proposal,...(confidenceSet?{confidenceSet}:{})});
 }
 
 function prepare(ds,plan){
@@ -115,7 +118,17 @@ function exceeds(candidate,observed){
 
 export function runClusterTrialOutcome(ds,plan=ds.trialOutcome){
   const frozen=planClusterTrialOutcome(ds,plan);
+  if(frozen.confidenceSet){
+    const registered=ds.trialOutcome;
+    if(!registered?.confidenceSet||registered.feature!==frozen.feature
+        ||registered.seed!==frozen.seed||registered.perms!==frozen.perms
+        ||registered.confidenceSet.model!==frozen.confidenceSet.model
+        ||registered.confidenceSet.alpha!==frozen.confidenceSet.alpha)
+      throw new Error('The constant-effect model and alpha must be registered in the dataset trialOutcome before analysis; no post-hoc confidence-set upgrade');
+  }
   const prepared=prepare(ds,frozen), {summary,unsupported}=prepared;
+  const confidenceSet=frozen.confidenceSet?runConstantEffectConfidenceSet(ds,frozen):
+    {status:'not_registered',exact:false,finding:'No constant-additive effect model was registered at dataset intake; no effect confidence set is reported.'};
   const common={method:'Fisher cluster-randomization test of sharp no-effect null',
     design:'predeclared uniform whole-cluster assignment conditioned on each stratum treatment count',
     primaryOutcome:frozen.feature,seed:frozen.seed,permutationBudget:frozen.perms,
@@ -123,7 +136,8 @@ export function runClusterTrialOutcome(ds,plan=ds.trialOutcome){
     nSubjects:prepared.nSubjects,nStrata:summary.length,strata:summary,
     estimator:'mean of equal-cluster treatment-control differences within each stratum; equal stratum weights',
     unit:'cluster-level treatment allocation; equal subject contribution inside each cluster',
-    causalLimit:'Tests a SHARP null that treatment changes no measured outcome for any subject under registered uniform cluster assignment and no interference. It does not independently verify that allocation protocol was followed; observational treatment, unequal assignment probabilities, unregistered restrictions, carryover and between-cluster interference are unsupported. The observed contrast is not an identified confidence interval or a model-based average-treatment-effect estimate.'};
+    confidenceSet,
+    causalLimit:'Tests a SHARP null that treatment changes no measured outcome for any subject under registered uniform cluster assignment and no interference. It does not independently verify that allocation protocol was followed; observational treatment, unequal assignment probabilities, unregistered restrictions, carryover and between-cluster interference are unsupported. The point contrast alone is not a confidence interval. Any separately registered constant-effect confidence set relies on a SAME-effect model for every unit and does not give a confidence interval for a heterogeneous average treatment effect.'};
   if(unsupported.length){
     return {...common,status:'unavailable',observedContrast:null,p:null,pExact:false,
       nullSampling:'unidentifiable_stratum',
@@ -131,7 +145,7 @@ export function runClusterTrialOutcome(ds,plan=ds.trialOutcome){
         +'. Refusing to silently drop selected strata or infer a causal effect.'};
   }
   const observed=prepared.statistic(ds.y);
-  const exactCap=512;
+  const exactCap=EXACT_TRIAL_CAP;
   const orbit=conditionalOrbitSize(ds.batch,ds.y,exactCap,ds.subject,ds.cluster,'cluster');
   if(orbit===1){
     return {...common,status:'unavailable',observedContrast:observed,p:null,pExact:false,
@@ -140,6 +154,16 @@ export function runClusterTrialOutcome(ds,plan=ds.trialOutcome){
   }
   let exceedances=0,draws=0;
   if(orbit<=exactCap){
+    if(confidenceSet.status==='available'){
+      const p=confidenceSet.pAtZero;
+      return {...common,status:p<=0.05?'reject_sharp_null':'retain_sharp_null',
+        observedContrast:confidenceSet.observedContrast,
+        absoluteStatistic:Math.abs(confidenceSet.observedContrast),p,
+        pExact:true,orbitSize:orbit,nullSampling:'complete_cluster_randomization_orbit',
+        assignmentsEvaluated:orbit,exceedances:confidenceSet.zeroExceedances,
+        finding:'Exact two-sided Fisher randomization p='+p.toFixed(5)
+          +' across all '+orbit+' legal whole-cluster treatment assignments (exact rational ties included).'};
+    }
     for(const labels of conditionalLabelAssignments(ds.batch,ds.y,
       {maxAssignments:exactCap,subject:ds.subject,cluster:ds.cluster,assignmentUnit:'cluster'})){
       const value=prepared.statistic(labels);
@@ -186,5 +210,21 @@ export function trialOutcomeMarkdown(run){
     'Outcome: '+run.status+'. '+run.finding,'',
     'Interpretation limit: '+run.causalLimit,
     ''];
+  const confidence=run.confidenceSet;
+  if(confidence){
+    lines.push('### Constant-additive effect confidence set','',
+      'Status: '+confidence.status+'. '+confidence.finding);
+    if(confidence.status==='available')lines.push(
+      'Confidence level: '+((1-confidence.alpha)*100).toPrecision(6)+'%; alpha: '+confidence.alpha,
+      'Exact set: '+confidenceSetNotation(confidence),
+      'Endpoint convention: square brackets include a boundary; braces are an isolated value; parentheses exclude a boundary or infinity.',
+      'Assumption: '+confidence.assumption,
+      'Interpretation: '+confidence.interpretation,
+      'Acceptance rule: '+confidence.rule,
+      'Arithmetic: '+confidence.arithmetic,
+      'Certificate: '+confidence.cells.length+' exact open-interval / boundary cells; '+confidence.assignmentsEvaluated+' allocations.');
+    else if(confidence.assumption)lines.push('Assumption: '+confidence.assumption,'Interpretation: '+confidence.interpretation);
+    lines.push('');
+  }
   return lines.join('\n');
 }

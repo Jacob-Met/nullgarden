@@ -98,7 +98,7 @@ export function makeServer() {
       }
       if (req.method === 'POST' && ['/api/run', '/api/family', '/api/trial-outcome', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
-        if (Object.hasOwn(b,'randomization')||Object.hasOwn(b,'trialOutcome')) throw new Error('Treatment assignment and primary trial outcome are immutable after /api/dataset intake; reload dataset to preregister a distinct trial');
+        if (Object.hasOwn(b,'randomization')||Object.hasOwn(b,'trialOutcome')||Object.hasOwn(b,'confidenceSet')) throw new Error('Treatment assignment, primary trial outcome, effect model and alpha are immutable after /api/dataset intake; reload dataset to preregister a distinct trial');
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
         if (url.pathname === '/api/trial-outcome') {

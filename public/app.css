@@ -83,3 +83,6 @@ textarea{width:100%;background:var(--panel);border:1px solid var(--line);padding
 @media(max-width:900px){.stage{grid-template-columns:1fr}.side{border-left:0;border-top:1px solid var(--line);min-height:0}.plate{padding:20px 16px 40px}.bar{padding:10px 16px}.side{padding:24px 16px}}
 @media(max-width:560px){.plate-head{flex-direction:column;align-items:stretch}.beds{overflow-x:auto}.row,.axis{grid-template-columns:110px 1fr 46px}.ladder::after{left:calc(110px + (100% - 110px - 46px) * var(--naive-pos))}.d{width:11px;height:11px}.verdict b{font-size:22px}}
 @media(prefers-reduced-motion:no-preference){.pt{transition:left .5s}}
+.trial-assumption{max-width:32rem;white-space:normal;line-height:1.4}
+.confidence-set{font-size:1.1rem;overflow-wrap:anywhere}
+.exact-endpoints{font-family:monospace;overflow-wrap:anywhere}

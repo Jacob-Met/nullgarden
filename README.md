@@ -247,3 +247,35 @@ The `components/` directory holds earlier standalone Python modules (batch-label
 ## License
 
 MIT, see LICENSE.
+
+## Exact constant-additive effect confidence sets
+
+A cluster-trial no-effect p-value does not quantify uncertainty about effect size. If the study protocol **already assumes the same additive effect for every measured unit**, preregister this additional model and alpha when loading the dataset:
+
+```json
+{
+  "randomization": {
+    "unit": "cluster",
+    "mechanism": "uniform_within_batch",
+    "protocolId": "YOUR-PREREGISTERED-PROTOCOL"
+  },
+  "trialOutcome": {
+    "feature": "response",
+    "seed": 21,
+    "perms": 129,
+    "confidenceSet": {"model": "constant_additive", "alpha": 0.05}
+  }
+}
+```
+
+Include the CSV in the same `/api/dataset` request. The browser offers the equivalent unchecked, explicit **same additive effect for every unit** registration before CSV intake. Both the model and alpha enter the intake digest. `/api/trial-outcome` accepts only `datasetId`; adding or changing a model after inspecting results is refused. Omitting the opt-in returns `confidenceSet.status: "not_registered"` and preserves the existing no-effect analysis.
+
+For each legal allocation, the algorithm imputes no-treatment outcomes by subtracting the proposed common effect from originally treated units. The equal-stratum, equal-cluster statistic is affine in that effect: `a - b * tau`, while the observed statistic is `observed - tau`. Both signed line crossings partition the entire real line into open intervals and boundary points. An exact event sweep counts inclusive two-sided exceedances on every cell, retaining precisely `p(tau) > alpha`. It preserves disconnected components and singleton points without a grid, bisection shortcut, or convex hull. The current equal-cluster estimator has more structure than arbitrary affine statistics; generic disconnected-set tests do not imply that every such topology occurs in this trial design.
+
+**Arithmetic and endpoints.** Stored finite binary64 outcomes are converted to exact rational numbers, and the declared decimal alpha is represented exactly. Roots, ties, degeneracies and their ordering use integer arithmetic. Every finite endpoint is returned as an authoritative numerator/denominator pair; an optional decimal approximation is only for display. Distinct roots are never merged using a tolerance. Components explicitly record open/closed ends, including isolated points and unbounded ranges. The JSON response also returns the complete cell certificate. The browser shows rounded values with exact endpoints in an expandable section; Markdown exports exact set notation.
+
+**Scientific limits.** This is a confidence set for a common constant effect, conditional on the registered uniform whole-cluster assignment mechanism and no interference. It is not an interval for an average effect under heterogeneous treatment effects. All registered strata must have both arms. Complete enumeration is capped at 512 allocations; larger orbits return an unavailable confidence set while keeping the separately labeled, preregistered Monte Carlo no-effect p-value. The protocol declaration does not independently prove that randomization occurred. Nonuniform designs, unsupported models, unregistered changes and nonrepresentable observed contrasts are refused.
+
+**Independent verification.** `node --test test/cluster-confidence.test.mjs` invokes a Python 3 `Fraction` receiver with its own raw-row reduction and exhaustive bitmask allocation filter. It checks every exact cell and endpoint on frozen paired and unbalanced designs, all 64 observed allocations under common effects 0 and 8 at alpha 0.05 and 0.2, unequal cluster/subject/repeat counts, positive controls, degenerate roots, decimal-alpha ties, and cold HTTP/Markdown intake. Python is a development/verification dependency; the product runtime remains Node.js without third-party packages.
+
+Method background: [Fiksel (2024), exact randomization-based covariate-adjusted confidence intervals](https://doi.org/10.1093/biometrics/ujae051), and [Zhu and Liu (2024), rejoinder on recovering nonmonotone p-value functions and disconnected confidence sets](https://doi.org/10.1093/biometrics/ujae052). The implementation uses the complete inclusive two-sided test, rather than assuming monotone one-sided bounds.
