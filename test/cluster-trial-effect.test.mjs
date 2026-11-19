@@ -196,6 +196,8 @@ test('HTTP intake locks primary outcome with digest; separate result and report 
       controls:['within_batch_permutation']},'text');
     assert.equal(text.code,200);
     assert.match(text.data,/Preregistered cluster-trial primary outcome/);
+    assert.ok(text.data.includes('\n## Preregistered cluster-trial primary outcome'),
+      'scientific output must be separated as a real Markdown heading');
     assert.match(text.data,/SHARP null/);
     const invalid=await post('/api/dataset',{...input,trialOutcome:{feature:'unknown',seed:21,perms:129}});
     assert.equal(invalid.code,400);
