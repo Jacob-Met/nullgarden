@@ -90,6 +90,7 @@ export function makeServer() {
       }
       if (req.method === 'POST' && ['/api/run', '/api/family', '/api/propose', '/api/explain', '/api/report'].includes(url.pathname)) {
         const b = await body(req);
+        if (Object.hasOwn(b,'randomization')) throw new Error('Randomization mechanism is immutable after /api/dataset intake; reload the dataset to register a distinct trial');
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
         if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));
