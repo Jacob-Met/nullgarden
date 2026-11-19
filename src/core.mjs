@@ -627,7 +627,9 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         + summary.nPureHeldout + ' pure-label batches excluded from AUC.';
     }
     results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out,
-      auc: a, aggregation: 'mean_per_mixed_heldout_batch',
+      auc: a, aggregation: ds.unit
+        ? 'mean_per_mixed_heldout_batch_and_unit'
+        : 'mean_per_mixed_heldout_batch',
       nMixedHeldout: summary.nMixedHeldout, nPureHeldout: summary.nPureHeldout,
       nUnsupportedTrain: summary.nUnsupportedTrain,
       perBatch: summary.perBatch, pooledOofAuc: summary.pooledOofAuc,
@@ -641,7 +643,8 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
     const keep = ds.batch.map((b, i) => (mixedSet.has(b) ? i : -1)).filter((i) => i >= 0);
     let a = null, unavailable = null;
     if (keep.length >= 10) {
-      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
+      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep),
+        ...(ds.unit ? {unit:pick(ds.unit,keep)} : {}) };
       try {
         a = repeatedCv(sub, batchCenteredScorer(sub, k), { seed: seed + 3 });
       } catch (error) {
@@ -662,11 +665,13 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
         : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination is weak under this control; this does not establish absence of biological signal.`;
     results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized,
       auc: a, nUsed: keep.length, preprocessing: 'training_fold_only',
-      aggregation: 'mean_per_heldout_fold',
+      aggregation: ds.unit ? 'mean_per_heldout_fold_and_unit' : 'mean_per_heldout_fold',
       status: a === null ? 'unavailable' : survives ? 'signal' : 'shortcut',
       finding };
   }
-  return { n, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
+  return { n, nUnits, permutationUnit: ds.unit ? 'unit' : 'sample',
+    nBatches: table.length, mixedBatches: [...mixedSet],
+    design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
 }
 
 export function verdict(res) {
@@ -681,20 +686,23 @@ export function verdict(res) {
   const ran = Object.keys(res).length > 1;
   if (!ran) return { id: 'unrun', label: 'No controls run', text: 'Select at least one control.' };
   if (shortcut && !signal) return { id: 'shortcut', label: 'Mostly shortcut', text: partialSignal
-    ? 'A shortcut was detected. One within-batch signal control is favorable, but the independent second control has not corroborated it.'
+    ? 'A shortcut was detected. One within-batch signal control is favorable, but the complementary second control has not corroborated it.'
     : 'Batch-only or batch-transfer controls indicate shortcut sensitivity. No corroborated within-batch signal was established; absence of significance is not proof of no signal.' };
-  if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Both independent within-batch signal controls are favorable, while batch structure also explains part of the headline score. Report the controlled number, not the naive one.' };
+  if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Both complementary within-batch signal controls are favorable, while batch structure also explains part of the headline score. Report the controlled number, not the naive one.' };
   if (signal) return { id: 'signal', label: 'Signal holds up', text: 'Both the batch-preserving permutation null and train-fold-only batch centering support within-batch discrimination. This is evidence, not proof of biological causality.' };
   if (partialSignal) return { id: 'open', label: 'Incomplete evidence', text: 'Only one signal control is favorable; both the batch-preserving permutation null and training-fold batch centering must support a result before calling it robust.' };
   return { id: 'open', label: 'Inconclusive', text: 'No control flagged a shortcut and none showed corroborated signal beyond the null. Add controls or samples.' };
 }
 
 export function toMarkdown(name, run, narrative) {
-  const L = [`# NULLGARDEN control report: ${name}`, '', `Verdict: **${run.verdict.label}**. ${run.verdict.text}`, '', `${run.n} samples, ${run.nBatches} batches, ${run.mixedBatches.length} with both labels.`, '',
+  const L = [`# NULLGARDEN control report: ${name}`, '', `Verdict: **${run.verdict.label}**. ${run.verdict.text}`, '',
+    `${run.n} samples, ${run.nUnits} independent ${run.permutationUnit === 'unit' ? 'units (unit_id: grouped CV and whole-unit shuffling)' : 'sample units'}, ${run.nBatches} batches, ${run.mixedBatches.length} with both labels.`, '',
     '| Control | AUC | Status |', '|---|---|---|'];
   for (const r of Object.values(run.results)) L.push(`| ${r.title} | ${r.auc === null ? 'n/a' : r.auc.toFixed(3)} | ${r.status || 'baseline'} |`);
   L.push('', '## Cross-validation estimand', '',
-    'Random stratified CV reports mean within-fold AUROC: each mixed-label heldout fold is scored separately, then averaged over folds and repeats. Raw prediction ranks from different fitted models must not be pooled; if any requested test fold is pure-label, its AUROC is undefined and the aggregate abstains.', '', '## Findings');
+    run.permutationUnit === 'unit'
+      ? 'Repeated measurements of one independent unit are kept in the same training/heldout fold. Their heldout scores are averaged into one unit score, then mean within-fold unit-level AUROC is computed; each mixed-label heldout fold is averaged across folds and repeats. No row from the heldout unit appears in training. A pure-label heldout-unit fold abstains.'
+      : 'Random stratified CV reports mean within-fold AUROC: each mixed-label heldout fold is scored separately, then averaged over folds and repeats. Raw prediction ranks from different fitted models must not be pooled; if any requested test fold is pure-label, its AUROC is undefined and the aggregate abstains.', '', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   const permutation = run.results.within_batch_permutation;
   if (permutation) L.push('', '## Permutation inference limits', '',
