@@ -134,7 +134,7 @@ export function makeServer() {
         }
         const run = runControls(entry.ds, controlsFrom(b), { stopping: 'decision' });
         const main=toMarkdown(entry.name, run, b.narrative ? String(b.narrative).slice(0, 4000) : '');
-        const trial=entry.ds.trialOutcome ? '\\n'+trialOutcomeMarkdown(runClusterTrialOutcome(entry.ds)) : '';
+        const trial=entry.ds.trialOutcome ? '\n'+trialOutcomeMarkdown(runClusterTrialOutcome(entry.ds)) : '';
         return send(200,main+trial,'text/markdown; charset=utf-8');
       }
       if (req.method === 'GET') {
