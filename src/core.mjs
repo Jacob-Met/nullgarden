@@ -77,7 +77,12 @@ export function fitScore(Xtr, ytr, Xte, k = 20) {
     }
   }
   const n1 = ytr.filter((v) => v === 1).length, n0 = ytr.length - n1;
-  if (n1 === 0 || n0 === 0) return Xte.map(() => 0);
+  if (n1 === 0 || n0 === 0) {
+    const error = new Error('Training fold has no samples from one class; prediction is unidentifiable');
+    error.code = 'CV_TRAIN_CLASS_MISSING';
+    error.classCounts = { positive: n1, negative: n0 };
+    throw error;
+  }
 
   const mu1 = new Float64Array(p), mu0 = new Float64Array(p),
     variance = new Float64Array(p);
@@ -160,11 +165,41 @@ export function macroBatchAuc(scores, y, batch) {
 
 /** The raw pooled AUC is preserved as an explicit *diagnostic only*. */
 export function leaveBatchOutEvaluation(ds, k = 20) {
-  const scores = oof(ds.y.length, batchFolds(ds.batch), modelScorer(ds.X, ds.y, k));
-  return { ...macroBatchAuc(scores, ds.y, ds.batch),
-    pooledOofAuc: auc(scores, ds.y) };
+  const n = ds.y.length, all = [...Array(n).keys()];
+  const scores = new Array(n).fill(null);
+  const perBatch = [];
+  for (const test of batchFolds(ds.batch)) {
+    const tested = new Set(test);
+    const train = all.filter((i) => !tested.has(i));
+    const trainingY = pick(ds.y, train);
+    const positiveTraining = trainingY.filter((v) => v === 1).length;
+    const negativeTraining = train.length - positiveTraining;
+    const trainSupported = positiveTraining > 0 && negativeTraining > 0;
+    const positives = test.filter((i) => ds.y[i] === 1).length;
+    if (!trainSupported) {
+      perBatch.push({ batch: ds.batch[test[0]], n: test.length, positives,
+        auc: null, trainSupported: false,
+        reason: 'Heldout batch leaves training without both classes' });
+      continue;
+    }
+    const fitted = fitScore(pick(ds.X, train), trainingY, pick(ds.X, test), k);
+    fitted.forEach((v, j) => { scores[test[j]] = v; });
+    perBatch.push({ batch: ds.batch[test[0]], n: test.length, positives,
+      auc: auc(fitted, pick(ds.y, test)), trainSupported: true });
+  }
+  const valid = perBatch.filter((row) => row.trainSupported && row.auc !== null);
+  const nUnsupportedTrain = perBatch.filter((row) => !row.trainSupported).length;
+  return {
+    auc: valid.length ? mean(valid.map((row) => row.auc)) : null,
+    nMixedHeldout: valid.length,
+    nPureHeldout: perBatch.length - valid.length - nUnsupportedTrain,
+    nUnsupportedTrain,
+    perBatch,
+    // Missing one prediction invalidates the pooled cross-model diagnostic,
+    // never substitute a constant or compare missing scores as zeros.
+    pooledOofAuc: nUnsupportedTrain ? null : auc(scores, ds.y),
+  };
 }
-
 
 function pick(arr, ids) { return ids.map((i) => arr[i]); }
 
@@ -276,14 +311,33 @@ export function designTable(ds) {
 }
 
 export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) {
+  if (!Number.isInteger(folds) || folds < 2 || folds > ds.y.length
+      || !Number.isInteger(repeats) || repeats < 1) {
+    throw new RangeError('Cross validation requires 2..n folds and at least one repeat');
+  }
   const r = rng(seed);
   const aucs = [];
   for (let rep = 0; rep < repeats; rep++) {
     const f = stratifiedFolds(ds.y, folds, r);
+    // A fold with a missing training class cannot fit the requested
+    // binary classifier. Refuse a spurious score instead of the historical
+    // all-zero prediction, whose AUROC could be mistaken for evidence.
+    if (f.some((test) => {
+      const inTest = new Set(test);
+      let nPositive = 0, nNegative = 0;
+      ds.y.forEach((label, i) => {
+        if (inTest.has(i)) return;
+        if (label === 1) nPositive++;
+        else if (label === 0) nNegative++;
+      });
+      return nPositive === 0 || nNegative === 0;
+    })) return null;
     const s = oof(ds.y.length, f, scorerFactory);
-    aucs.push(auc(s, ds.y));
+    const value = auc(s, ds.y);
+    if (value === null) return null;
+    aucs.push(value);
   }
-  return mean(aucs.filter((a) => a !== null));
+  return mean(aucs);
 }
 
 export const CONTROLS = {
