@@ -55,6 +55,32 @@ $('#run').addEventListener('click', async () => {
           +metric('Two-sided Fisher p',p)+metric('Independent clusters',String(trial.nClusters))+'</div>'
           +'<p>'+esc(trial.finding)+'</p><p class="trial-limit">'+esc(trial.causalLimit)+'</p>';
       }
+      if(ds.effectModel){
+        const cr=await post('/api/trial-confidence',{datasetId:ds.datasetId});
+        const confidence=await cr.json();
+        const child=document.createElement('div');
+        child.className='trial-set';
+        if(!cr.ok || confidence.status!=='exact'){
+          child.innerHTML='<h4>95% additive-effect confidence set unavailable</h4><p>'
+            +esc(confidence.reason||confidence.error||'No exact interval can be certified for this registered design')+'</p>';
+        }else{
+          const bound=(w,missing)=>{
+            if(!w)return missing;
+            return Number.isFinite(w.approximate)?Number(w.approximate).toPrecision(6)
+              :w.numerator+'/'+w.denominator;
+          };
+          const parts=confidence.intervals.map(v=>
+            (v.includeLower?'[':'(')+bound(v.lower,'−∞')+', '
+            +bound(v.upper,'+∞')+(v.includeUpper?']':')'));
+          child.innerHTML='<h4>95% Fisher confidence set — constant additive effect</h4>'
+            +'<div class="set-intervals">'+parts.map(esc).join(' ∪ ')+'</div>'
+            +'<p>All '+confidence.orbitSize+' legal cluster assignments and '
+            +confidence.nBreakpoints+' exact rational crossing points considered. '
+            +'Every interval component and endpoint is retained; boundaries are fully specified in the downloaded report.</p>'
+            +'<p class="trial-limit">'+esc(confidence.scientificLimit)+'</p>';
+        }
+        surface.append(child);
+      }
     }
   } finally { btn.disabled = false; btn.textContent = 'Run controls'; }
 });
@@ -133,6 +159,8 @@ $('#dl').addEventListener('click', async () => {
 $('#trialMode').addEventListener('change', () => {
   $('#trialProtocol').disabled = !$('#trialMode').checked;
   $('#trialOutcome').disabled = !$('#trialMode').checked;
+  $('#additiveModel').disabled = !$('#trialMode').checked;
+  if(!$('#trialMode').checked)$('#additiveModel').checked=false;
 });
 $('#csvFile').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -147,8 +175,14 @@ $('#csvFile').addEventListener('change', async (e) => {
   const outcomeFeature=$('#trialOutcome').value.trim();
   const trialOutcome=randomization&&outcomeFeature
     ? {feature:outcomeFeature,seed:20261030,perms:199}:undefined;
+  if($('#additiveModel').checked&&!trialOutcome){
+    alert('Enter an exact preregistered outcome CSV column before opting into the constant additive-effect confidence set.');
+    e.target.value='';return;
+  }
+  const effectModel=trialOutcome&&$('#additiveModel').checked?'constant_additive':undefined;
   await setDataset({ csv: await f.text(), name: f.name,
     ...(randomization?{randomization}:{}),
-    ...(trialOutcome?{trialOutcome}:{}) }); e.target.value = '';
+    ...(trialOutcome?{trialOutcome}:{}),
+    ...(effectModel?{effectModel}:{}) }); e.target.value = '';
 });
 init();
