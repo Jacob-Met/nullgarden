@@ -640,9 +640,13 @@ export function toMarkdown(name, run, narrative) {
   const permutation = run.results.within_batch_permutation;
   if (permutation) L.push('', '## Permutation inference limits', '',
     permutation.inferenceLimit,
-    `Statistic: ${permutation.statisticRepeats} CV repeats, seed ${permutation.statisticSeed}; ${permutation.permsBudget} predeclared within-batch permutations, ${permutation.permsRun} actually evaluated (${permutation.stopping} stopping). The null uses the same statistic and CV randomization as the observed dataset.`,
+    `Statistic: ${permutation.statisticRepeats} CV repeats, seed ${permutation.statisticSeed}; ${permutation.nullSampling === 'complete_batch_conditional_orbit'
+      ? 'all ' + permutation.orbitSize + ' distinct conditional label assignments evaluated exactly'
+      : permutation.permsBudget + ' predeclared Monte Carlo shuffles, ' + permutation.permsRun + ' actually evaluated (' + permutation.stopping + ' stopping)'}. The null uses the same statistic and CV randomization as the observed dataset.`,
     permutation.p === null ? 'No permutation inference was identifiable.'
-      : permutation.pExact ? `Exact fixed-budget p: ${permutation.p.toFixed(4)}.`
+      : permutation.nullSampling === 'complete_batch_conditional_orbit'
+        ? `Exact conditional-orbit p: ${permutation.p.toFixed(4)} across all ${permutation.orbitSize} permitted label allocations; the observed allocation is included once and ties count.`
+        : permutation.pExact ? `Exact complete-Monte-Carlo-budget p: ${permutation.p.toFixed(4)}; this is NOT an enumeration of the full conditional label orbit.`
         : `Anytime-valid conservative p-value bound: ${permutation.p.toFixed(4)}. The unknown completed-budget p is in [${permutation.pLower.toFixed(4)}, ${permutation.pUpper.toFixed(4)}]; do not report a selected-prefix null mean or treat nonrejection as affirmative evidence.`);
   if (narrative) L.push('', '## Nemotron explanation (figures checked against the table above)', '', narrative);
   L.push('', '## Corrected evaluation candidate', '', 'Report mean per-mixed-heldout-batch AUC (pure-label heldouts excluded; at least two mixed groups needed) and training-fold-only batch-centered AUC next to the batch-only baseline. Scores pooled across separately fitted heldout-batch models are only diagnostic, not cross-batch discrimination evidence. Treat only the amount above the within-batch permutation null as tentative evidence of learned signal.');
