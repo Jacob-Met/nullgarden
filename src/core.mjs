@@ -1,4 +1,6 @@
 import { conditionalOrbitSize, conditionalLabelAssignments } from './exact-orbit.mjs';
+import { unitGroups, stratifiedUnitFolds, unitPermutationDesign } from './units.mjs';
+export { unitGroups, stratifiedUnitFolds, unitPermutationDesign } from './units.mjs';
 export { conditionalOrbitSize, conditionalLabelAssignments } from './exact-orbit.mjs';
 // Deterministic core: a small, fully specified pipeline plus the negative controls that run it.
 // Nothing here calls a model. Nemotron proposes which controls to look at; this file executes them.
@@ -28,6 +30,28 @@ function numericalFailure(detail) {
     + '. Rescale measurements or exclude this unsupported magnitude.');
   error.code = 'NUMERIC_RANGE_UNSUPPORTED';
   return error;
+}
+
+/** Independent-unit AUROC: repeated measurements from one subject count as
+ * ONE prediction, the arithmetic mean of its heldout scores. This leaves
+ * already-independent datasets unchanged, and never uses test labels when
+ * aggregating technical replicates.
+ */
+export function unitAuc(scores, y, unit) {
+  if (!unit) return auc(scores, y);
+  if (scores.length !== y.length || y.length !== unit.length) {
+    throw new RangeError('Unit AUC requires aligned scores, labels and unit IDs');
+  }
+  const map = new Map();
+  for (let i = 0; i < scores.length; i++) {
+    const g = map.get(unit[i]);
+    if (g) {
+      if (g.label !== y[i]) throw new Error('Unit AUC cannot combine inconsistent labels within the same independent unit');
+      g.sum += scores[i]; g.n++;
+    } else map.set(unit[i], {label:y[i],sum:scores[i],n:1});
+  }
+  const units = [...map.values()];
+  return auc(units.map(g=>g.sum/g.n), units.map(g=>g.label));
 }
 
 export function auc(scores, y) {
@@ -144,7 +168,7 @@ export function batchFolds(batch) {
  * substitute for within-heldout-batch AUC, especially for pure-label batches.
  * Pure groups have no AUROC by definition and are explicitly accounted for.
  */
-export function macroBatchAuc(scores, y, batch) {
+export function macroBatchAuc(scores, y, batch, unit) {
   if (scores.length !== y.length || batch.length !== y.length) {
     throw new Error('AUC scores, labels and batch IDs must have equal length');
   }
@@ -157,7 +181,8 @@ export function macroBatchAuc(scores, y, batch) {
   const perBatch = [...groups].map(([name, ids]) => ({
     batch: name, n: ids.length,
     positives: ids.filter((i) => y[i] === 1).length,
-    auc: auc(ids.map((i) => scores[i]), ids.map((i) => y[i])),
+    auc: unitAuc(ids.map((i) => scores[i]), ids.map((i) => y[i]),
+      unit && ids.map(i=>unit[i])),
   }));
   const mixed = perBatch.filter((group) => group.auc !== null);
   return { auc: mixed.length ? mean(mixed.map((group) => group.auc)) : null,
@@ -187,7 +212,8 @@ export function leaveBatchOutEvaluation(ds, k = 20) {
     const fitted = fitScore(pick(ds.X, train), trainingY, pick(ds.X, test), k);
     fitted.forEach((v, j) => { scores[test[j]] = v; });
     perBatch.push({ batch: ds.batch[test[0]], n: test.length, positives,
-      auc: auc(fitted, pick(ds.y, test)), trainSupported: true });
+      auc: unitAuc(fitted, pick(ds.y, test),
+        ds.unit && pick(ds.unit, test)), trainSupported: true });
   }
   const valid = perBatch.filter((row) => row.trainSupported && row.auc !== null);
   const nUnsupportedTrain = perBatch.filter((row) => !row.trainSupported).length;
@@ -199,7 +225,7 @@ export function leaveBatchOutEvaluation(ds, k = 20) {
     perBatch,
     // Missing one prediction invalidates the pooled cross-model diagnostic,
     // never substitute a constant or compare missing scores as zeros.
-    pooledOofAuc: nUnsupportedTrain ? null : auc(scores, ds.y),
+    pooledOofAuc: nUnsupportedTrain ? null : unitAuc(scores, ds.y, ds.unit),
   };
 }
 
@@ -220,12 +246,21 @@ function modelScorer(X, y, k) {
   return (train, test) => fitScore(pick(X, train), pick(y, train), pick(X, test), k);
 }
 
-function batchPrevalenceScorer(batch, y) {
+function batchPrevalenceScorer(batch, y, unit) {
   return (train, test) => {
     const c = new Map();
-    let pos = 0;
-    for (const i of train) { const e = c.get(batch[i]) || [0, 0]; e[0] += y[i]; e[1]++; c.set(batch[i], e); pos += y[i]; }
-    const global = pos / train.length;
+    let pos = 0, nUnits = 0;
+    const counted = new Set();
+    for (const i of train) {
+      // Training folds include complete units. Count each independent donor
+      // once; a donor with many technical replicates gets no extra vote.
+      if (unit && counted.has(unit[i])) continue;
+      if (unit) counted.add(unit[i]);
+      const e = c.get(batch[i]) || [0, 0];
+      e[0] += y[i]; e[1]++; c.set(batch[i], e);
+      pos += y[i]; nUnits++;
+    }
+    const global = pos / nUnits;
     return test.map((i) => { const e = c.get(batch[i]); return e ? e[0] / e[1] : global; });
   };
 }
@@ -320,7 +355,9 @@ export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) 
   const r = rng(seed);
   const aucs = [];
   for (let rep = 0; rep < repeats; rep++) {
-    const f = stratifiedFolds(ds.y, folds, r);
+    const f = ds.unit
+      ? stratifiedUnitFolds(ds.y, ds.unit, folds, r)
+      : stratifiedFolds(ds.y, folds, r);
     // A fold with a missing training class cannot fit the requested
     // binary classifier. Refuse a spurious score instead of the historical
     // all-zero prediction, whose AUROC could be mistaken for evidence.
@@ -347,7 +384,8 @@ export function repeatedCv(ds, scorerFactory, { seed, repeats = 3, folds = 5 }) 
       // heldout fold is pure. The entire requested repeated-CV estimand
       // abstains rather than silently discarding or inventing those pairs.
       if (!testLabels.includes(0) || !testLabels.includes(1)) return null;
-      const value = auc(scorerFactory(train, test), testLabels);
+      const value = unitAuc(scorerFactory(train, test), testLabels,
+        ds.unit && pick(ds.unit, test));
       if (value === null) return null;
       foldAucs.push(value);
     }
