@@ -141,6 +141,32 @@ Pass this JSON to `POST /api/dataset`, then use the returned `datasetId` with `P
 
 **Scope:** Validity depends on actual `uniform_within_batch` cluster assignment, conditional on the treated-cluster count in each stratum, under the sharp randomization null and no interference. A protocol ID cannot prove compliance. Arbitrary observational clusters, unequal allocation probabilities, nonuniform adaptive assignment, site-wide unmeasured interference, and restricted randomization beyond explicit strata are **not supported**. This pipeline tests whether a *predictive CV statistic* is unusual under a sharp null; it does not estimate an average treatment effect or justify a causal claim by itself.
 
+
+## Fisher sharp-null treatment outcomes for randomized clusters
+
+The registered cluster-label classifier above diagnoses treatment *predictability*, not treatment response. For an actual randomized trial, NULLGARDEN now has a **separate design-based primary treatment-outcome analysis**, with a preregistered numeric outcome feature, seed and Monte Carlo budget. An observed treatment outcome cannot be selected retroactively after seeing model scores:
+
+```json
+{
+  "csv": "sample_id,batch,label,subject_id,cluster_id,response,fingerprint\\n...",
+  "randomization": {
+    "unit": "cluster",
+    "mechanism": "uniform_within_batch",
+    "protocolId": "RANDOMIZED-TRIAL-2026"
+  },
+  "trialOutcome": {"feature": "response", "seed": 21, "perms": 129},
+  "family": {"ks": [1, 2], "seed": 31, "perms": 127}
+}
+```
+
+Send this at `POST /api/dataset`. `POST /api/trial-outcome` then accepts **only** `{"datasetId":"..."}`; it returns the frozen outcome, protocol, original-data registration digest, observed cluster-weighted contrast, a two-sided Fisher randomization p-value, complete-orbit or Monte Carlo status, and explicit inferential limits. The main **Run controls** button displays this direct treatment outcome beside the standard diagnostic controls. CSV upload has an opt-in primary-outcome field (must exactly name an existing numeric CSV feature). Reports append the registered treatment-outcome section. `/api/run`, `/api/report`, and `/api/trial-outcome` refuse new or changed analysis registration fields after upload.
+
+**Estimator and legal assignments:** average the repeated measurements **inside each subject**, average subjects **within each cluster**, compute the treatment-minus-control difference between **equal-weight clusters within each randomized batch/stratum**, then average these stratum differences **equally**. Thus 10 repeated images of one participant do not have 10x the independent weighting, and a large cluster does not occupy multiple randomization slots. Every legal treatment reassignment moves whole clusters, maintains each stratum's randomized treated-cluster count, and leaves measured outcomes fixed under the *sharp null of no treatment effect anywhere*. Strata lacking a treatment/control contrast are reported **unavailable**, never selectively dropped.
+
+When the complete legal orbit contains at most 512 allocations, exhaustive enumeration yields the exact finite-sample two-sided Fisher p with ties counted; the independent scientific oracle is a separate six-stratum/64-allocation bitmask reference, including a full 64-case Type-I envelope. When the orbit exceeds 512 allocations, the analysis runs the frozen `perms` budget as **uniform Monte Carlo with replacement**, using conservative `(1 + exceedances)/(1 + draws)`, and clearly reports this is **not exact orbit enumeration**. This is distinct from the sequential conservative upper-bound p-process used by the classifier diagnostic.
+
+**Causal limits:** This is a randomization test for a *sharp* no-effect null, conditional on the actual preregistered uniform whole-cluster treatment assignment, correctly specified strata and no interference between clusters. It does **not** prove historical randomization, adjust for unrecorded outcome censoring, estimate a confidence interval for an average treatment effect, or license causal interpretations from observational/matched-nonuniform/adaptive assignments. Numeric outcome values may be post-treatment; interpretation depends on actual temporal/protocol provenance, which the upload cannot independently verify. See Fisher, *The Design of Experiments* (1935) and Winkler et al., *NeuroImage* (2015), for design-based randomization and whole-block exchangeability foundations.
+
 ## Exact batch-conditional randomization for tractable designs
 
 NULLGARDEN now checks the size of the *complete* conditional label orbit before drawing random shuffles. With batch (b) containing (n_b) observations and (k_b) positive labels, there are exactly `product_b choose(n_b, k_b)` distinct allocations consistent with the observed within-batch positive counts. It uses bounded, overflow-safe integer combinatorics and a **lazy** joint assignment enumerator (no factorial-sized array, no duplicate arrangements of indistinguishable labels). If the orbit fits both a 512-assignment ceiling and a deterministic estimated-work budget of 25 million feature/sample/fold operations, it evaluates **every** allocation using the same three-repeat foldwise AUROC statistic and fixed CV seed, with the observed allocation included exactly once.
