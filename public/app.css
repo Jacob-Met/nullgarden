@@ -18,6 +18,13 @@ button,textarea,input{font:inherit;color:inherit}
 .trial input{accent-color:var(--lime)}
 .trial-id input{width:175px;min-width:0;background:var(--panel);border:1px solid var(--line);padding:5px 7px;font:12px var(--mono)}
 .trial-id input:disabled{opacity:.45}
+.trial-effect{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0 20px;margin:0 0 22px}
+.trial-effect h3{font:600 13px var(--mono);margin:0 0 8px}
+.trial-effect .trial-metric{display:flex;flex-wrap:wrap;gap:12px 28px;font:12px var(--mono);align-items:baseline}
+.trial-effect .trial-metric b{display:block;font:600 25px var(--mono);color:var(--lime)}
+.trial-effect p{max-width:76ch;font-size:13px;color:var(--dim);margin:8px 0 0}
+.trial-effect .trial-limit{font-size:11px}
+
 .llm{font:12px var(--mono);color:var(--dim)}
 .llm::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-right:8px}
 .llm.on::before{background:var(--lime)}
