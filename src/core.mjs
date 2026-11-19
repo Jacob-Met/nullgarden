@@ -353,52 +353,98 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
   const mixedSet = new Set(table.filter((t) => t.mixed).map((t) => t.batch));
   const results = {};
   const naive = repeatedCv(ds, modelScorer(ds.X, ds.y, k), { seed });
-  results.naive = { id: 'naive', title: 'Naive random-split CV', question: 'The headline number a shortcut can inflate.', auc: naive };
-
+  results.naive = { id: 'naive', title: 'Naive random-split CV',
+    question: 'The headline number a shortcut can inflate.', auc: naive,
+    status: naive === null ? 'unavailable' : 'baseline',
+    finding: naive === null
+      ? 'Training folds lose one class; the headline AUC is unidentifiable, not chance performance.'
+      : undefined };
   if (selected.includes('batch_only')) {
     const a = repeatedCv(ds, batchPrevalenceScorer(ds.batch, ds.y), { seed: seed + 1 });
-    const same = a >= naive - 0.05;
-    results.batch_only = { id: 'batch_only', ...CONTROLS.batch_only, auc: a, status: same ? 'shortcut' : 'neutral',
-      finding: same ? 'The batch label alone reproduces the model score. The measurements are not needed to reach it.' : 'The batch label alone scores clearly below the model.' };
+    const identifiable = a !== null && naive !== null;
+    const same = identifiable && a >= naive - 0.05;
+    results.batch_only = { id: 'batch_only', ...CONTROLS.batch_only,
+      auc: identifiable ? a : null,
+      status: identifiable ? (same ? 'shortcut' : 'neutral') : 'unavailable',
+      finding: !identifiable
+        ? 'Class support in at least one training fold is insufficient for a batch-only comparison.'
+        : same
+          ? 'The batch label alone reproduces the model score. The measurements are not needed to reach it.'
+          : 'The batch label alone scores clearly below the model.' };
   }
   if (selected.includes('within_batch_permutation')) {
     const r = rng(seed + 2);
     const nulls = [];
-    for (let b = 0; b < perms; b++) {
-      const y2 = ds.y.slice();
-      for (const t of table) {
-        const ids = t.samples.map((s) => s.i);
-        const sh = shuffle(ids.map((i) => ds.y[i]), r);
-        ids.forEach((i, m) => { y2[i] = sh[m]; });
+    if (naive !== null && Number.isInteger(perms) && perms >= 1) {
+      for (let b = 0; b < perms; b++) {
+        const y2 = ds.y.slice();
+        for (const t of table) {
+          const ids = t.samples.map((s) => s.i);
+          const sh = shuffle(ids.map((i) => ds.y[i]), r);
+          ids.forEach((i, m) => { y2[i] = sh[m]; });
+        }
+        nulls.push(repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k),
+          { seed: seed + 100 + b, repeats: 1 }));
       }
-      nulls.push(repeatedCv({ ...ds, y: y2 }, modelScorer(ds.X, y2, k), { seed: seed + 100 + b, repeats: 1 }));
     }
-    const ge = nulls.filter((v) => v >= naive).length;
-    const p = (1 + ge) / (perms + 1);
-    const beats = p <= 0.05;
-    results.within_batch_permutation = { id: 'within_batch_permutation', ...CONTROLS.within_batch_permutation, auc: mean(nulls), nullMean: mean(nulls), nullLo: quantile(nulls, 0.025), nullHi: quantile(nulls, 0.975), p, perms,
-      status: beats ? 'signal' : 'shortcut',
-      finding: beats ? `The observed score is above the batch-preserving null (p = ${p.toFixed(3)}), so some of it depends on which sample carries which label inside a batch.`
-        : `Shuffled labels reach a mean AUC of ${mean(nulls).toFixed(2)} and the observed score is not distinguishable from that null (p = ${p.toFixed(3)}). The batch structure alone explains it.` };
+    const valid = naive !== null && nulls.length === perms
+      && perms > 0 && nulls.every((v) => v !== null && Number.isFinite(v));
+    if (!valid) {
+      results.within_batch_permutation = { id: 'within_batch_permutation',
+        ...CONTROLS.within_batch_permutation, auc: null, p: null, perms,
+        status: 'unavailable',
+        finding: 'A valid permutation p-value requires identifiable two-class training folds for the observation and every shuffled-label run.' };
+    } else {
+      const ge = nulls.filter((v) => v >= naive).length;
+      const p = (1 + ge) / (perms + 1);
+      const beats = p <= 0.05;
+      const nullMean = mean(nulls);
+      results.within_batch_permutation = { id: 'within_batch_permutation',
+        ...CONTROLS.within_batch_permutation, auc: nullMean,
+        nullMean, nullLo: quantile(nulls, 0.025),
+        nullHi: quantile(nulls, 0.975), p, perms,
+        status: beats ? 'signal' : 'shortcut',
+        finding: beats
+          ? 'The observed score is above the batch-preserving null (p = '
+            + p.toFixed(3) + '), so some of it depends on which sample carries which label inside a batch.'
+          : 'Shuffled labels reach a mean AUC of ' + nullMean.toFixed(2)
+            + ' and the observed score is not distinguishable from that null (p = '
+            + p.toFixed(3) + '). The batch structure alone explains it.' };
+    }
   }
   if (selected.includes('leave_batch_out')) {
     const summary = leaveBatchOutEvaluation(ds, k);
-    const adequate = summary.nMixedHeldout >= 2;
-    // One held-out mixed batch gives an AUC for that batch, not evidence of
-    // transfer *across batches*. Keep its value in perBatch, abstain overall.
+    const adequate = summary.nMixedHeldout >= 2 && naive !== null;
     const a = adequate ? summary.auc : null;
     const drop = a === null ? null : naive - a;
     const shortcut = drop !== null && drop >= 0.15;
-    const finding = a === null
-      ? `Only ${summary.nMixedHeldout} held-out batch(es) contain both labels; batch-transfer AUROC is not identifiable across multiple batches. ${summary.nPureHeldout} pure-label batch(es) cannot contribute AUROC.`
-      : shortcut
-        ? `Holding out whole batches drops mean within-mixed-batch AUC by ${drop.toFixed(2)} across ${summary.nMixedHeldout} evaluable batches; ${summary.nPureHeldout} pure-label batches excluded from AUC.`
-        : `Mean within-mixed-batch AUC changes little across ${summary.nMixedHeldout} evaluable held-out batches; ${summary.nPureHeldout} pure-label batches excluded from AUC.`;
+    let finding;
+    if (summary.nUnsupportedTrain) {
+      finding = summary.nUnsupportedTrain
+        + ' held-out batch(es) leave a single-class training set; these predictions are not identifiable. '
+        + summary.nMixedHeldout + ' held-out batches remain evaluable with both test labels.';
+    } else if (naive === null) {
+      finding = 'Class support is insufficient in the random-split baseline; no valid cross-validation drop can be calculated.';
+    } else if (a === null) {
+      finding = 'Only ' + summary.nMixedHeldout
+        + ' held-out batch(es) contain both labels; batch-transfer AUC is not identifiable across multiple batches. '
+        + summary.nPureHeldout + ' pure-label batch(es) cannot contribute AUC.';
+    } else if (shortcut) {
+      finding = 'Holding out whole batches drops mean within-mixed-batch AUC by '
+        + drop.toFixed(2) + ' across ' + summary.nMixedHeldout
+        + ' evaluable batches; ' + summary.nPureHeldout + ' pure-label batches excluded from AUC.';
+    } else {
+      finding = 'Mean within-mixed-batch AUC changes little across '
+        + summary.nMixedHeldout + ' evaluable held-out batches; '
+        + summary.nPureHeldout + ' pure-label batches excluded from AUC.';
+    }
     results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out,
       auc: a, aggregation: 'mean_per_mixed_heldout_batch',
       nMixedHeldout: summary.nMixedHeldout, nPureHeldout: summary.nPureHeldout,
+      nUnsupportedTrain: summary.nUnsupportedTrain,
       perBatch: summary.perBatch, pooledOofAuc: summary.pooledOofAuc,
-      status: shortcut ? 'shortcut' : 'neutral', finding };
+      status: a === null ? 'unavailable' : shortcut ? 'shortcut' : 'neutral',
+      finding };
   }
   if (selected.includes('batch_residualized')) {
     // Restrict the diagnostic to mixed-label batches as before; crucially,
@@ -420,13 +466,15 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
       ? unavailable
         ? 'Train-only batch centering is not identifiable: a held-out fold includes batch '
           + unavailable.join(', ') + ' absent from its training fold.'
-        : 'Too few samples sit in batches with both labels to test this.'
+        : keep.length < 10
+          ? 'Too few samples sit in batches with both labels to test this.'
+          : 'At least one centered cross-validation training fold lacks both classes; its AUC is unidentifiable.'
       : survives
         ? `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination survives this fold-local control, but biological causality is not established.`
         : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination is weak under this control; this does not establish absence of biological signal.`;
     results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized,
       auc: a, nUsed: keep.length, preprocessing: 'training_fold_only',
-      status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
+      status: a === null ? 'unavailable' : survives ? 'signal' : 'shortcut',
       finding };
   }
   return { n, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
