@@ -20,6 +20,18 @@ Open http://127.0.0.1:4412. Pick a dataset tab, press **Run controls**, read the
 
 A fixed pipeline (top-20 feature selection by |t| inside each training fold, then diagonal LDA) is scored by cross-validation, then rerun under four controls: batch-only baseline, within-batch label permutation (with a shuffled-label null band), leave-one-batch-out, and batch-centered features. The rules in `src/core.mjs` turn the ladder of AUCs into a verdict. Nothing in that path calls a model.
 
+## Certified anytime permutation decisions (the web app's default)
+
+The web/API run starts with a **predeclared** budget of 100 conditional label shuffles, a fixed model pipeline, a fixed random seed, and a fixed decision threshold α = 0.05. After `t` shuffles of which `Lₜ` meet or exceed the observed foldwise AUC, the unobserved full-budget Monte Carlo p-value is guaranteed, for **every possible remaining outcome**, to lie between
+
+`p_lower = (Lₜ + 1) / (B + 1)` and `p_upper = (Lₜ + 1 + B - t) / (B + 1)`.
+
+If `p_lower > 0.05`, no possible remaining permutation can make the declared fixed-budget test significant, so the app immediately stops. If `p_upper <= 0.05`, the test is already significant even under the least favorable possible remaining shuffles. Otherwise it continues. The reported `p` is always the **conservative upper bound**, an anytime-valid p-process for this fixed-B test; it is marked `pExact:false` unless all B shuffles were run. A stopped test does **not** publish an adaptively sampled null mean or histogram as if it were the full null, and a large bound is never evidence that the batch caused the model score. The JSON includes `permsBudget`, `permsRun`, `pLower`, `pUpper`, and `pExact`; the exported report says what was and wasn't observed.
+
+The key guarantee is **pathwise**: every decision reached early is identical to the eventual fixed-budget decision, no matter what the unseen suffix contains. The tests exhaustively verify all 512 exceedance streams for B=9, compare all three scientific scenarios against full-budget runs, and check cold HTTP output. Choosing a different budget, rerunning with different seeds until favorable, or selecting different hypothesis controls afterward **does not inherit** this guarantee. Direct `runControls` calls still default to `stopping:'fixed'` for reproducible complete-null distribution studies, while the interactive/API path uses `stopping:'decision'` to save work when the decision is already settled.
+
+This is the conservative **fixed-horizon anytime-valid** construction in Fischer and Ramdas, [*Sequential Monte Carlo testing by betting*](https://academic.oup.com/jrsssb/article/87/4/1200/8106328), JRSS B (2025). It does not implement their more sophisticated betting mixtures or anytime validity across post-hoc hypothesis selection, and it does not turn observational batch controls into causal identification.
+
 ## What the permutation p-value actually tests
 
 The batch-conditional null fixes each batch's observed label count and uniformly shuffles labels **inside** its batch. Every shuffled dataset is processed by the **same deterministic three-repeat stratified-CV AUC statistic**, with the **same CV seed and folds generator** as the observed dataset. The finite Monte Carlo p-value is `(1 + number of shuffled statistics >= observed statistic) / (1 + shuffled datasets)`; the fixed budget is 100 shuffles by default. Previous revisions compared a three-repeat observed AUC to one-repeat shuffles with different fold seeds. Those numbers were not a valid exchangeable null for the same statistic and are **not** comparable to current p-values. The CI suite compares the core to an independent conditional-shuffle oracle over all three bundled scenarios and multiple frozen seeds.

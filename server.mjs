@@ -50,7 +50,7 @@ export function makeServer() {
         const b = await body(req);
         const entry = store.get(b.datasetId);
         if (!entry) return send(404, { error: 'Dataset expired. Load it again.' });
-        if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b)));
+        if (url.pathname === '/api/run') return send(200, runControls(entry.ds, controlsFrom(b), { stopping: 'decision' }));
         if (url.pathname === '/api/propose') {
           const r = await chat(proposePrompt(designTable(entry.ds), String(b.note || '').slice(0, 500)));
           if (!r.ok) return send(200, r);
@@ -59,12 +59,12 @@ export function makeServer() {
           return send(200, { ok: true, hypotheses, model: r.model, ms: r.ms });
         }
         if (url.pathname === '/api/explain') {
-          const run = runControls(entry.ds, controlsFrom(b));
+          const run = runControls(entry.ds, controlsFrom(b), { stopping: 'decision' });
           const r = await chat(explainPrompt(run), { maxTokens: 3000 });
           if (!r.ok) return send(200, r);
           return send(200, { ok: true, text: r.text, model: r.model, ms: r.ms, check: checkFigures(r.text, run) });
         }
-        const run = runControls(entry.ds, controlsFrom(b));
+        const run = runControls(entry.ds, controlsFrom(b), { stopping: 'decision' });
         return send(200, toMarkdown(entry.name, run, b.narrative ? String(b.narrative).slice(0, 4000) : ''), 'text/markdown; charset=utf-8');
       }
       if (req.method === 'GET') {

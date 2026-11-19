@@ -51,15 +51,17 @@ export function validateProposal(obj) {
 export function explainPrompt(run) {
   const lines = Object.values(run.results).map((r) => {
     const value = r.auc === null ? 'n/a' : r.auc.toFixed(2);
-    const probability = Number.isFinite(r.p) && Number.isFinite(r.nullMean)
-      ? ' p=' + r.p.toFixed(3) + ' null_mean=' + r.nullMean.toFixed(2)
+    const probability = Number.isFinite(r.p)
+      ? ' p=' + r.p.toFixed(3)
+        + (r.pExact === false ? ' (conservative upper bound; not exact)' : '')
+        + (Number.isFinite(r.nullMean) ? ' null_mean=' + r.nullMean.toFixed(2) : '')
       : r.p === null ? ' p=unavailable' : '';
     return r.id + ': AUC=' + value + probability
       + (r.status ? ' status=' + r.status : '')
       + (r.finding ? ' reason=' + r.finding : '');
   }).join('\n');
   return [
-    { role: 'system', content: 'Explain machine-learning evidence to a bench scientist. Use only supplied computed figures. Missing AUC or p-values mean no test was possible; never reinterpret null as zero or describe a model as learning signal from unavailable controls. If the scientific verdict is inconclusive, state it explicitly. No hype.' },
+    { role: 'system', content: 'Explain machine-learning evidence to a bench scientist. Use only supplied computed figures. A null AUC with a finite conservative permutation p bound means the shuffled null was intentionally truncated after a mathematically settled decision; it does not mean no valid test ran. Missing p means unavailable evidence. Do not present a conservative bound as an exact p or infer biological causality. If the verdict is inconclusive, say so. No hype.' },
     { role: 'user', content: 'Results of negative controls on one classifier:\n'
       + lines + '\nVerdict from the deterministic rules: ' + run.verdict.label
       + '.\n\nIn at most 120 words: distinguish supported evidence from unavailable tests. If all critical tests are unavailable, do not claim the model learned or exploited anything; explain how to obtain enough mixed-class samples. Otherwise explain the computed control evidence, quote only real figures and provide a next step.' },
@@ -69,7 +71,7 @@ export function explainPrompt(run) {
 // Every decimal the model writes must match a computed figure (to 0.006), else it is flagged.
 export function checkFigures(text, run) {
   const known = [];
-  for (const r of Object.values(run.results)) for (const k of ['auc', 'p', 'nullMean', 'nullLo', 'nullHi']) if (typeof r[k] === 'number') known.push(r[k]);
+  for (const r of Object.values(run.results)) for (const k of ['auc', 'p', 'pLower', 'pUpper', 'nullMean', 'nullLo', 'nullHi']) if (typeof r[k] === 'number') known.push(r[k]);
   const found = (text.match(/\d+\.\d+/g) || []).map(Number);
   const bad = found.filter((v) => !known.some((k) => Math.abs(k - v) <= 0.006));
   return { total: found.length, matched: found.length - bad.length, unmatched: bad };
