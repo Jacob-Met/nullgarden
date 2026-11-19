@@ -1,4 +1,5 @@
 import { rng } from './core.mjs';
+import { conditionalUnits } from './exact-orbit.mjs';
 
 // Batch/label counts are the real bladderbatch design recorded in
 // components/batch-confounding/examples/bladderbatch (57 samples, 5 batches).
@@ -35,18 +36,31 @@ export function parseCsv(text, { maxRows = 2000, maxCols = 2000 } = {}) {
   if (lines.length < 11) throw new Error('Need a header and at least 10 samples.');
   if (lines.length - 1 > maxRows) throw new Error(`At most ${maxRows} samples.`);
   const head = lines[0].split(',').map((s) => s.trim());
-  if (head.length < 4 || head.length > maxCols + 3) throw new Error('Columns must be: sample_id, batch, label, then at least one numeric feature.');
-  const ids = [], batch = [], y = [], X = [];
+  const withSubject = head[3] === 'subject_id';
+  const featureStart = withSubject ? 4 : 3;
+  if (head.slice(0, 3).join(',') !== 'sample_id,batch,label'
+      || head.length <= featureStart || head.length > maxCols + featureStart
+      || head.slice(featureStart).includes('subject_id')) {
+    throw new Error('Columns must be sample_id,batch,label,[subject_id,], then at least one numeric feature.');
+  }
+  const ids = [], batch = [], y = [], X = [], subject = [];
   lines.slice(1).forEach((l, i) => {
     const c = l.split(',').map((s) => s.trim());
     if (c.length !== head.length) throw new Error(`Row ${i + 2} has ${c.length} fields, expected ${head.length}.`);
     if (c[2] !== '0' && c[2] !== '1') throw new Error(`Row ${i + 2}: label must be 0 or 1.`);
-    const row = c.slice(3).map(Number);
+    if (!c[0]) throw new Error(`Row ${i + 2}: sample_id is empty.`);
+    if (withSubject && !c[3]) throw new Error(`Row ${i + 2}: subject_id is empty.`);
+    const row = c.slice(featureStart).map(Number);
     if (row.some((v) => !Number.isFinite(v))) throw new Error(`Row ${i + 2}: features must be finite numbers.`);
     if (!c[1]) throw new Error(`Row ${i + 2}: batch is empty.`);
     ids.push(c[0]); batch.push(c[1]); y.push(Number(c[2])); X.push(row);
+    if (withSubject) subject.push(c[3]);
   });
   if (new Set(ids).size !== ids.length) throw new Error('sample_id values must be unique.');
   if (!y.includes(0) || !y.includes(1)) throw new Error('Need both labels.');
-  return { ids, batch, y, X, features: head.slice(3) };
+  // Reject cross-batch donors or contradictory labels *at intake*, before
+  // any CV, p-value or export can silently treat dependent rows as independent.
+  if (withSubject) conditionalUnits(batch, y, subject);
+  return { ids, batch, y, X, features: head.slice(featureStart),
+    ...(withSubject ? {subject} : {}) };
 }
