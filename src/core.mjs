@@ -611,6 +611,7 @@ export function runControls(ds, selected = Object.keys(CONTROLS),
           && prefix && prefix.decision !== 'continue'));
       const metadata = {
         perms, permsBudget: perms, permsRun: nulls.length,
+        ...(orbitSize !== null && orbitSize > exactMax ? {orbitSizeLowerBound:exactMax + 1,orbitSizeExact:false} : {}),
         pLower: valid ? prefix.lower : null, pUpper: valid ? prefix.upper : null,
         pExact: valid && complete, stopping,
         statisticRepeats: 3, statisticSeed: seed,
