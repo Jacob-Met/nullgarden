@@ -123,7 +123,7 @@ If **the entire cluster was assigned one treatment label by a known experimental
 
 ```json
 {
-  "csv": "sample_id,batch,label,subject_id,cluster_id,feature_1,...\\n...",
+  "csv": "sample_id,batch,label,subject_id,cluster_id,feature_1,...\n...",
   "randomization": {
     "unit": "cluster",
     "mechanism": "uniform_within_batch",
