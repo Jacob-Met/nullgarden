@@ -30,9 +30,9 @@ if (length(unique(rownames(pheno)))!=57) stop("Nonunique original observation ID
 # Probe selection independent of cancer labels and sampled processing dates.
 # Freeze base R sampling and sort selected index for stable column order.
 RNGkind(kind="Mersenne-Twister", normal.kind="Inversion", sample.kind="Rejection")
-set.seed(20261118)
-picks <- sort(sample.int(nrow(expr), 200L, replace=FALSE))
-chosen <- t(expr[picks,,drop=FALSE])
+# The pilot 20261118 is retained (and SHA-checked downstream), followed by
+# five additional fixed probe-panel seeds BEFORE their results are examined.
+panel_seeds <- c(20261118L,20261119L,20261120L,20261121L,20261122L,20261123L)
 output <- Sys.getenv("NULLGARDEN_REAL_CSV")
 if (!nzchar(output)) stop("NULLGARDEN_REAL_CSV destination is required")
 options(digits=17)
@@ -52,15 +52,26 @@ export_case <- function(name, keep, labels, path) {
         " n_cancer=",counts[2],"\n",sep="")
   }
 }
-export_case("cancer-v-two-distinct-reference-groups",rep(TRUE,57),binary,output)
-export_case("cancer-v-normal-only",raw_pheno %in% c("Cancer","Normal"),
-            binary,paste0(output,".cancer-v-normal.csv"))
-export_case("cancer-v-biopsy-only",raw_pheno %in% c("Cancer","Biopsy"),
-            binary,paste0(output,".cancer-v-biopsy.csv"))
+for (panel_seed in panel_seeds) {
+  set.seed(panel_seed)
+  picks <- sort(sample.int(nrow(expr), 200L, replace=FALSE))
+  chosen <- t(expr[picks,,drop=FALSE])
+  panel_path <- if (panel_seed==panel_seeds[1]) output
+                else paste0(output,".panel-",panel_seed)
+  cat("probe_panel_seed=",panel_seed," n_probes=",length(picks),"\n",sep="")
+  export_case(paste0("seed-",panel_seed,"-pooled-reference"),
+              rep(TRUE,57),binary,panel_path)
+  export_case(paste0("seed-",panel_seed,"-normal-only"),
+              raw_pheno %in% c("Cancer","Normal"),
+              binary,paste0(panel_path,".cancer-v-normal.csv"))
+  export_case(paste0("seed-",panel_seed,"-biopsy-only"),
+              raw_pheno %in% c("Cancer","Biopsy"),
+              binary,paste0(panel_path,".cancer-v-biopsy.csv"))
+}
 cat("source_package=bladderbatch_1.50.0 (Bioconductor 3.23)\n")
 cat("expression_provenance=original RMA-normalized bladderEset assays\n")
 cat("n_rows=",ncol(expr)," n_probes=",length(picks),
     " n_batches=",length(unique(batch)),"\n",sep="")
 cat("cancer_positive_label=Cancer; reference_in_primary=Biopsy+Normal; no assertion of reference-tissue comparability\n")
 cat("identity_limitation=sample IDs are not verified donor identities; no subject exchangeability is established\n")
-cat("probe_selection=frozen seed 20261118; unsupervised 200 of ",nrow(expr)," probes\n",sep="")
+cat("probe_selection=frozen six seeds 20261118..20261123; each unlabeled sample of 200 of ",nrow(expr)," probes\n",sep="")
