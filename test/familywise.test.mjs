@@ -135,6 +135,7 @@ test('registered family retains independently witnessed subject-level positive s
     ds.X.push(row);
   }
   const result=runFamilywiseK(ds,{ks:[1,25],seed:20261030,perms:199,stopping:'decision'});
+  console.log('FAMILY_POSITIVE_ORIGINAL='+JSON.stringify({tests:result.tests,status:result.status}));
   assert.equal(result.status,'valid');
   assert.equal(result.tests.length,2);
   for(const t of result.tests){
