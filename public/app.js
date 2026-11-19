@@ -19,7 +19,7 @@ async function setDataset(body) {
   const r = await post('/api/dataset', body); const j = await r.json();
   if (!r.ok) { alert(j.error); return; }
   ds = j; run = null; proposed = {}; explanation = '';
-  $('#out').hidden = true; $('#hyp').innerHTML = ''; $('#askMsg').textContent = ''; $('#exMsg').textContent = ''; $('#explainOut').hidden = true; $('#explain').disabled = true;
+  $('#out').hidden = true; $('#trialEffect').hidden = true; $('#hyp').innerHTML = ''; $('#askMsg').textContent = ''; $('#exMsg').textContent = ''; $('#explainOut').hidden = true; $('#explain').disabled = true;
   document.querySelectorAll('#picks label').forEach((l) => l.classList.remove('rec'));
   drawBeds();
 }
@@ -40,6 +40,22 @@ $('#run').addEventListener('click', async () => {
     const r = await post('/api/run', { datasetId: ds.datasetId, controls }); run = await r.json();
     if (!r.ok) { alert(run.error); return; }
     drawOut(); $('#explain').disabled = !status.keyConfigured; explanation = ''; $('#explainOut').hidden = true;
+    if(ds.trialOutcomeRegistration){
+      const tr=await post('/api/trial-outcome',{datasetId:ds.datasetId});
+      const trial=await tr.json(),surface=$('#trialEffect');
+      surface.hidden=false;
+      if(!tr.ok){
+        surface.innerHTML='<h3>Registered treatment outcome unavailable</h3><p>'+esc(trial.error||'Inference failed')+'</p>';
+      }else{
+        const metric=(label,val)=>'<div>'+esc(label)+'<b>'+esc(val)+'</b></div>';
+        const estimate=trial.observedContrast===null?'unavailable':Number(trial.observedContrast).toFixed(4);
+        const p=trial.p===null?'unavailable':Number(trial.p).toFixed(5);
+        surface.innerHTML='<h3>Preregistered randomized treatment outcome</h3>'
+          +'<div class="trial-metric">'+metric('Equal-cluster outcome contrast',estimate)
+          +metric('Two-sided Fisher p',p)+metric('Independent clusters',String(trial.nClusters))+'</div>'
+          +'<p>'+esc(trial.finding)+'</p><p class="trial-limit">'+esc(trial.causalLimit)+'</p>';
+      }
+    }
   } finally { btn.disabled = false; btn.textContent = 'Run controls'; }
 });
 
@@ -115,6 +131,7 @@ $('#dl').addEventListener('click', async () => {
 
 $('#trialMode').addEventListener('change', () => {
   $('#trialProtocol').disabled = !$('#trialMode').checked;
+  $('#trialOutcome').disabled = !$('#trialMode').checked;
 });
 $('#csvFile').addEventListener('change', async (e) => {
   const f = e.target.files[0]; if (!f) return;
@@ -126,6 +143,11 @@ $('#csvFile').addEventListener('change', async (e) => {
     alert('Enter the preregistered trial protocol ID before loading a cluster-randomized design.');
     e.target.value=''; return;
   }
-  await setDataset({ csv: await f.text(), name: f.name, ...(randomization?{randomization}:{}) }); e.target.value = '';
+  const outcomeFeature=$('#trialOutcome').value.trim();
+  const trialOutcome=randomization&&outcomeFeature
+    ? {feature:outcomeFeature,seed:20261030,perms:199}:undefined;
+  await setDataset({ csv: await f.text(), name: f.name,
+    ...(randomization?{randomization}:{}),
+    ...(trialOutcome?{trialOutcome}:{}) }); e.target.value = '';
 });
 init();
