@@ -179,6 +179,10 @@ test('immutable HTTP trial registration, familywise inference and no post-hoc pr
     assert.equal(family.data.status,'valid');
     assert.equal(family.data.tests.length,2);
     assert.ok(family.data.tests.every(t=>t.adjustedP>=t.rawP));
+    const posthoc=await post('/api/run',{datasetId:ordinary.data.datasetId,
+      controls:['within_batch_permutation'],randomization:ds.randomization});
+    assert.equal(posthoc.code,400);
+    assert.match(posthoc.data.error,/immutable after/i);
     const unregistered=await post('/api/dataset',{csv:csv(ds),
       randomization:{unit:'cluster'}});
     assert.equal(unregistered.code,400);
