@@ -167,6 +167,29 @@ When the complete legal orbit contains at most 512 allocations, exhaustive enume
 
 **Causal limits:** This is a randomization test for a *sharp* no-effect null, conditional on the actual preregistered uniform whole-cluster treatment assignment, correctly specified strata and no interference between clusters. It does **not** prove historical randomization, adjust for unrecorded outcome censoring, estimate a confidence interval for an average treatment effect, or license causal interpretations from observational/matched-nonuniform/adaptive assignments. Numeric outcome values may be post-treatment; interpretation depends on actual temporal/protocol provenance, which the upload cannot independently verify. See Fisher, *The Design of Experiments* (1935) and Winkler et al., *NeuroImage* (2015), for design-based randomization and whole-block exchangeability foundations.
 
+
+## Exact Fisher confidence SET for a declared constant additive effect
+
+The sharp *no-effect* p-value does not by itself say which nonzero treatment-effect magnitudes remain compatible with the randomized design. A third analysis layer now **inverts the complete Fisher randomization test over the entire real-valued effect axis**, not a hand-picked effect grid. This requires one additional, explicit assumption registered **before results**: `effectModel: "constant_additive"`, asserting the *same additive outcome response for every subject*. For example, at `POST /api/dataset`, extend the registered trial intake with:
+
+```json
+{
+  "randomization": {"unit": "cluster", "mechanism": "uniform_within_batch",
+                    "protocolId": "FROZEN-TRIAL"},
+  "trialOutcome": {"feature": "response", "seed": 21, "perms": 129},
+  "effectModel": "constant_additive",
+  "csv": "sample_id,batch,label,subject_id,cluster_id,response\\n..."
+}
+```
+
+Then `POST /api/trial-confidence` accepts **only** the returned `datasetId`. The app's registered-trial toolbar offers an opt-in **95% additive set** checkbox. Its analysis panel places the complete Fisher confidence set ahead of any secondary treatment-prediction diagnostics, and the Markdown report includes **every** component and exact boundary. Trial protocol, primary outcome, assumed effect model, and scientific family are immutable in the intake SHA-256 fingerprint: no effect assumption or primary outcome may be added on a later run.
+
+**Exact construction.** For every legal **whole-cluster** treatment reallocation `j`, the contrast computed from fixed observed outcomes under candidate constant effect `τ` is a line `T_j(τ) = a_j − b_j τ`. The observed contrast is `T_obs(τ) = a_obs − τ`. NULLGARDEN solves **every signed crossing** of `|T_j(τ)| = |T_obs(τ)|` with reduced arbitrary-precision rational arithmetic, sorts unique roots, sweeps their event multiplicities, counts finite exact p at both open regions **and the crossing points**, and returns the **full union** where `p(τ) > 0.05`. Closed/open boundary flags, isolated points, unbounded endpoints and disconnected components are preserved by the generic solver; no fictitious continuous interval is drawn over a rejected gap. Its exact arithmetic represents the **ingested IEEE-754 binary64 cluster-mean values**, not the original external measurement's unknowable precision. Fractions are serialized losslessly; decimal approximations in the UI are only for readability.
+
+The frozen independent falsifier enumerates all 64 randomized assignments of six two-cluster strata, computes raw-row treatment-adjusted outcome contrasts without invoking the candidate inverse, checks a grid of 65+ held-out candidate effects, and measures **all 64 potential observed assignments** under a true constant effect to verify finite-sample 95% coverage. One extremal legal allocation *does* exclude the true effect at a two-sided exact p of 2/64 = 0.03125; this is retained as a required negative control, because 95% design coverage does **not** mean inclusion for every realized experiment. Pure algebraic adversaries certify closed endpoints, isolated points and disconnected sets. This is consistent with [Luo et al., *Leveraging the Fisher Randomization Test using Confidence Distributions*, JRSS B 2021](https://academic.oup.com/jrsssb/article/83/4/777/7056013), which discusses Fisher p-value functions and non-monotonic inversion.
+
+**Scientific/compute boundary.** This is a **95% confidence set under a strong constant-additive potential-outcomes model**, not a generally valid confidence interval for heterogeneous average treatment effects, observational assignments, missing data mechanisms or interfering clusters. Its historical protocol remains user asserted. If more than **512 complete legal assignments** exist, it reports **unavailable**, rather than interpolating a sparse effect grid or passing a Monte Carlo p estimate off as a certified exact set. The original large-orbit preregistered Fisher *no-effect test* remains available and honest. A single extreme legal assignment can fail to cover the true effect without invalidating finite-sample coverage over the full design.
+
 ## Exact batch-conditional randomization for tractable designs
 
 NULLGARDEN now checks the size of the *complete* conditional label orbit before drawing random shuffles. With batch (b) containing (n_b) observations and (k_b) positive labels, there are exactly `product_b choose(n_b, k_b)` distinct allocations consistent with the observed within-batch positive counts. It uses bounded, overflow-safe integer combinatorics and a **lazy** joint assignment enumerator (no factorial-sized array, no duplicate arrangements of indistinguishable labels). If the orbit fits both a 512-assignment ceiling and a deterministic estimated-work budget of 25 million feature/sample/fold operations, it evaluates **every** allocation using the same three-repeat foldwise AUROC statistic and fixed CV seed, with the observed allocation included exactly once.
