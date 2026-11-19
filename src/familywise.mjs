@@ -60,8 +60,31 @@ export function planFamilywiseK(ds, spec={}) {
 
 export function runFamilywiseK(ds, spec={}) {
   const {ks:chosen,seed,perms,stopping,alpha}=planFamilywiseK(ds,spec);
-  const marginal=chosen.map(k=>runControls(ds,['within_batch_permutation'],
-    {seed,perms,k,stopping}).results.within_batch_permutation);
+  const evaluate=(k,mode)=>runControls(ds,['within_batch_permutation'],
+    {seed,perms,k,stopping:mode}).results.within_batch_permutation;
+  // The one-hypothesis early-stop boundary is alpha=0.05. It is NOT
+  // automatically a Holm-familywise boundary: e.g. marginal upper=.05 may
+  // adjust to .10 for two tests even though completed-budget p=.005.
+  // Compare Holm-adjusted BEST/WORST possible completed-budget p-vectors
+  // before deciding whether the familywise decision is settled pathwise.
+  const preliminary=chosen.map(k=>evaluate(k,stopping));
+  let marginal=preliminary;
+  let refinedForFamily=false;
+  const identified=preliminary.every(r=>r && Number.isFinite(r.p)
+    && Number.isFinite(r.pLower) && Number.isFinite(r.pUpper));
+  if (stopping==='decision' && identified) {
+    const lower=holmAdjust(preliminary.map(r=>r.pLower));
+    const upper=holmAdjust(preliminary.map(r=>r.pUpper));
+    const unresolved=lower.some((value,i)=>value<=alpha && upper[i]>alpha);
+    if (unresolved) {
+      // Replaying the SAME seed and predeclared B to completion changes no
+      // scientific choice; it only resolves a previously censored suffix.
+      // Exact conditional-orbit tests and fully evaluated MC never replay.
+      marginal=preliminary.map((r,i)=>
+        r.pLower===r.pUpper ? r : evaluate(chosen[i],'fixed'));
+      refinedForFamily=true;
+    }
+  }
   const valid=marginal.every(r=>r && Number.isFinite(r.p) && r.p>=0 && r.p<=1);
   const adjusted=valid ? holmAdjust(marginal.map(r=>r.p)) : chosen.map(()=>null);
   const tests=chosen.map((k,i)=>({
@@ -69,12 +92,14 @@ export function runFamilywiseK(ds, spec={}) {
     pExact:marginal[i]?.pExact??false,
     nullSampling:marginal[i]?.nullSampling??null,
     permutationsRun:marginal[i]?.permsRun??0,
+    preliminaryPermutationsRun:preliminary[i]?.permsRun??0,
     decision:valid ? (adjusted[i]<=alpha?'reject':'retain') : 'unavailable',
   }));
   return {
     method:'Holm-Bonferroni familywise error control',
     alpha, seed, predeclaredKs:chosen, permutationsBudget:perms, stopping,
+    sequentialRefinement:refinedForFamily?'completed_censored_suffix_for_holm':'bounds_already_certified',
     status:valid?'valid':'unavailable', tests,
-    inferenceLimit:'Controls familywise Type-I error for this predeclared top-k hypothesis family only if each conditional permutation p is valid under its stated row/unit exchangeability null. Holm accommodates arbitrarily dependent p-values; repeated subject rows are not independent when subject_id is provided. Fixed-budget early-stopped upper bounds are conservative. It does not cover post-hoc changes of family, seeds, budgets, repeat queries or unmodeled endpoint selection, and does not prove causation.',
+    inferenceLimit:'Controls familywise Type-I error for this predeclared top-k hypothesis family only if each conditional permutation p is valid under its stated row/unit exchangeability null. Holm accommodates arbitrarily dependent p-values; repeated subject rows are not independent when subject_id is provided. For one-hypothesis early-stopped bounds, this implementation first certifies the whole Holm family using adjusted pathwise lower/upper vectors; if any family decision is ambiguous, it completes the same predeclared Monte Carlo budgets. It does not cover post-hoc changes of family, seeds, budgets, repeat queries or unmodeled endpoint selection, and does not prove causation.',
   };
 }
