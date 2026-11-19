@@ -26,7 +26,7 @@ function trial() {
 // An INDEPENDENT oracle: bit m flips which cluster gets treatment inside
 // stratum m. It never calls the production enumerator or sampler.
 function oracleLabels(ds,mask) {
-  return ds.y.map((_,i) => (Math.floor(i/8)%2) ^ ((mask >> Math.floor(i/8))&1));
+  return ds.y.map((_,i) => (Math.floor(i/4)%2) ^ ((mask >> Math.floor(i/8))&1));
 }
 function statistic(ds,labels,k=1,seed=31){
   return repeatedCv({...ds,y:labels},(tr,te)=>
@@ -100,7 +100,7 @@ test('refuse unsupported experimental mechanism, absent metadata, and mixed-labe
   assert.throws(()=>runControls({...ds,cluster:undefined},[],{seed:31}),
     e=>e.code==='CLUSTER_ASSIGNMENT_METADATA_MISSING');
   const mixed={...ds,y:ds.y.slice()};
-  mixed.y[4]=mixed.y[5]=mixed.y[6]=mixed.y[7]=1;
+  mixed.y[2]=mixed.y[3]=1;
   assert.throws(()=>conditionalOrbitSize(mixed.batch,mixed.y,512,
     mixed.subject,mixed.cluster,'cluster'),e=>e.code==='CLUSTER_LABEL_MIXED');
   assert.throws(()=>runControls(mixed,[],{seed:31}),e=>e.code==='CLUSTER_LABEL_MIXED');
@@ -141,7 +141,7 @@ test('immutable HTTP trial registration, familywise inference and no post-hoc pr
       randomization:{unit:'cluster'}});
     assert.equal(unregistered.code,400);
     const mixed={...ds,y:ds.y.slice()};
-    mixed.y[4]=mixed.y[5]=mixed.y[6]=mixed.y[7]=1;
+    mixed.y[2]=mixed.y[3]=1;
     const bad=await post('/api/dataset',{csv:csv(mixed),randomization:ds.randomization});
     assert.equal(bad.code,400);
     assert.match(bad.data.error,/mixed treatment labels/i);
