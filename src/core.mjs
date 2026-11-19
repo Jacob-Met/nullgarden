@@ -755,7 +755,9 @@ export function toMarkdown(name, run, narrative) {
     '| Control | AUC | Status |', '|---|---|---|'];
   for (const r of Object.values(run.results)) L.push(`| ${r.title} | ${r.auc === null ? 'n/a' : r.auc.toFixed(3)} | ${r.status || 'baseline'} |`);
   L.push('', '## Exchangeability and replication', '',
-    run.unitMode === 'declared_nested_cluster_blocks'
+    run.unitMode === 'registered_cluster_randomization'
+      ? 'Registered uniform whole-cluster treatment assignment within batch, protocol '+run.randomization.protocolId+': all rows in each cluster receive one treatment label, full clusters are held out in CV and relabeled as indivisible blocks in exact or fixed-budget inference. The supplied protocol is a declared assumption, not independent proof that randomization happened. This is a predictive statistic, not an effect-size estimator.'
+      : run.unitMode === 'declared_nested_cluster_blocks'
       ? 'Nested cluster_id values were supplied: complete related families/sites were held out from cross-validation, subject rows were averaged once per subject, and binary subject labels exchanged only within each nested cluster. No conditional contrast yields unavailable inference. This controls the declared dependence structure, not unmeasured causal confounding.'
       : run.unitMode === 'declared_subject_blocks'
       ? 'Subject IDs were supplied: repeated measurements were held out together, averaged to one score per subject within each CV fold, and permuted as indivisible blocks within each batch. Subjects must be independent/exchangeable under the null; that assumption cannot be validated from this CSV.'
@@ -766,16 +768,16 @@ export function toMarkdown(name, run, narrative) {
   const permutation = run.results.within_batch_permutation;
   if (permutation) L.push('', '## Permutation inference limits', '',
     permutation.inferenceLimit,
-    ...(permutation.nullSampling==='no_nested_cluster_contrast'
+    ...(['no_nested_cluster_contrast','no_cluster_randomization_contrast'].includes(permutation.nullSampling)
       ? ['No within-cluster subject-label contrasts exist, so the null has one fixed allocation; no permutation p-value is defined.']
       : []),
     `Statistic: ${permutation.statisticRepeats} CV repeats, seed ${permutation.statisticSeed}; ${permutation.nullSampling === 'no_nested_cluster_contrast'
       ? 'no legal nontrivial permutation assignments (scientific abstention)'
-      : permutation.nullSampling === 'complete_batch_conditional_orbit'
+      : ['complete_batch_conditional_orbit','complete_cluster_randomization_orbit'].includes(permutation.nullSampling)
       ? 'all ' + permutation.orbitSize + ' distinct conditional label assignments evaluated exactly'
       : permutation.permsBudget + ' predeclared Monte Carlo shuffles, ' + permutation.permsRun + ' actually evaluated (' + permutation.stopping + ' stopping)'}. The null uses the same statistic and CV randomization as the observed dataset.`,
     permutation.p === null ? 'No permutation inference was identifiable.'
-      : permutation.nullSampling === 'complete_batch_conditional_orbit'
+      : ['complete_batch_conditional_orbit','complete_cluster_randomization_orbit'].includes(permutation.nullSampling)
         ? `Exact conditional-orbit p: ${permutation.p.toFixed(4)} across all ${permutation.orbitSize} permitted label allocations; the observed allocation is included once and ties count.`
         : permutation.pExact ? `Exact complete-Monte-Carlo-budget p: ${permutation.p.toFixed(4)}; this is NOT an enumeration of the full conditional label orbit.`
         : `Anytime-valid conservative p-value bound: ${permutation.p.toFixed(4)}. The unknown completed-budget p is in [${permutation.pLower.toFixed(4)}, ${permutation.pUpper.toFixed(4)}]; do not report a selected-prefix null mean or treat nonrejection as affirmative evidence.`);
