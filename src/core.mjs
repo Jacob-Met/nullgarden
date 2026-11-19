@@ -72,6 +72,40 @@ export function batchFolds(batch) {
   return names.map((b) => batch.map((v, i) => (v === b ? i : -1)).filter((i) => i >= 0));
 }
 
+/** Each batch's heldout samples share ONE fitted model, hence one score scale.
+ * Cross-batch pooled ranks of independently fitted models are not a valid
+ * substitute for within-heldout-batch AUC, especially for pure-label batches.
+ * Pure groups have no AUROC by definition and are explicitly accounted for.
+ */
+export function macroBatchAuc(scores, y, batch) {
+  if (scores.length !== y.length || batch.length !== y.length) {
+    throw new Error('AUC scores, labels and batch IDs must have equal length');
+  }
+  const groups = new Map();
+  for (let i = 0; i < batch.length; i++) {
+    const group = groups.get(batch[i]) || [];
+    group.push(i);
+    groups.set(batch[i], group);
+  }
+  const perBatch = [...groups].map(([name, ids]) => ({
+    batch: name, n: ids.length,
+    positives: ids.filter((i) => y[i] === 1).length,
+    auc: auc(ids.map((i) => scores[i]), ids.map((i) => y[i])),
+  }));
+  const mixed = perBatch.filter((group) => group.auc !== null);
+  return { auc: mixed.length ? mean(mixed.map((group) => group.auc)) : null,
+    nMixedHeldout: mixed.length, nPureHeldout: perBatch.length - mixed.length,
+    perBatch };
+}
+
+/** The raw pooled AUC is preserved as an explicit *diagnostic only*. */
+export function leaveBatchOutEvaluation(ds, k = 20) {
+  const scores = oof(ds.y.length, batchFolds(ds.batch), modelScorer(ds.X, ds.y, k));
+  return { ...macroBatchAuc(scores, ds.y, ds.batch),
+    pooledOofAuc: auc(scores, ds.y) };
+}
+
+
 function pick(arr, ids) { return ids.map((i) => arr[i]); }
 
 // Pooled out-of-fold scores for a scorer(trainIdx, testIdx) -> scores
@@ -96,6 +130,46 @@ function batchPrevalenceScorer(batch, y) {
     for (const i of train) { const e = c.get(batch[i]) || [0, 0]; e[0] += y[i]; e[1]++; c.set(batch[i], e); pos += y[i]; }
     const global = pos / train.length;
     return test.map((i) => { const e = c.get(batch[i]); return e ? e[0] / e[1] : global; });
+  };
+}
+
+// Batch centering is part of the fitted preprocessing pipeline. The
+// held-out fold never contributes a feature value to its training estimate.
+// A previously unseen test batch is not centerable without transduction;
+// fail closed rather than substituting a test-fold batch mean.
+export function centerFoldByTrainingBatch(X, batch, train, test) {
+  const p = X[0].length;
+  const observed = new Map();
+  for (const i of train) {
+    let item = observed.get(batch[i]);
+    if (!item) {
+      item = { sum: new Float64Array(p), count: 0 };
+      observed.set(batch[i], item);
+    }
+    item.count++;
+    for (let j = 0; j < p; j++) item.sum[j] += X[i][j];
+  }
+  const missingBatches = [...new Set(test.map((i) => batch[i])
+    .filter((b) => !observed.has(b)))].sort();
+  if (missingBatches.length) return { trainX: null, testX: null, missingBatches };
+  const center = (i) => {
+    const item = observed.get(batch[i]);
+    return X[i].map((v, j) => v - item.sum[j] / item.count);
+  };
+  return { trainX: train.map(center), testX: test.map(center), missingBatches: [] };
+}
+
+export function batchCenteredScorer(ds, k = 20) {
+  return (train, test) => {
+    const c = centerFoldByTrainingBatch(ds.X, ds.batch, train, test);
+    if (c.missingBatches.length) {
+      const err = new Error('Cannot center a held-out batch absent from training: '
+        + c.missingBatches.join(', '));
+      err.code = 'BATCH_NOT_IN_TRAIN';
+      err.batches = c.missingBatches;
+      throw err;
+    }
+    return fitScore(c.trainX, pick(ds.y, train), c.testX, k);
   };
 }
 
@@ -161,40 +235,75 @@ export function runControls(ds, selected = Object.keys(CONTROLS), { seed = 20261
         : `Shuffled labels reach a mean AUC of ${mean(nulls).toFixed(2)} and the observed score is not distinguishable from that null (p = ${p.toFixed(3)}). The batch structure alone explains it.` };
   }
   if (selected.includes('leave_batch_out')) {
-    const s = oof(n, batchFolds(ds.batch), modelScorer(ds.X, ds.y, k));
-    const a = auc(s, ds.y);
-    const drop = naive - a;
-    results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out, auc: a, status: drop >= 0.15 ? 'shortcut' : 'neutral',
-      finding: drop >= 0.15 ? `Holding out whole batches drops the score by ${drop.toFixed(2)}. The model depends on having seen the batch.` : 'Holding out whole batches changes the score little.' };
+    const summary = leaveBatchOutEvaluation(ds, k);
+    const adequate = summary.nMixedHeldout >= 2;
+    // One held-out mixed batch gives an AUC for that batch, not evidence of
+    // transfer *across batches*. Keep its value in perBatch, abstain overall.
+    const a = adequate ? summary.auc : null;
+    const drop = a === null ? null : naive - a;
+    const shortcut = drop !== null && drop >= 0.15;
+    const finding = a === null
+      ? `Only ${summary.nMixedHeldout} held-out batch(es) contain both labels; batch-transfer AUROC is not identifiable across multiple batches. ${summary.nPureHeldout} pure-label batch(es) cannot contribute AUROC.`
+      : shortcut
+        ? `Holding out whole batches drops mean within-mixed-batch AUC by ${drop.toFixed(2)} across ${summary.nMixedHeldout} evaluable batches; ${summary.nPureHeldout} pure-label batches excluded from AUC.`
+        : `Mean within-mixed-batch AUC changes little across ${summary.nMixedHeldout} evaluable held-out batches; ${summary.nPureHeldout} pure-label batches excluded from AUC.`;
+    results.leave_batch_out = { id: 'leave_batch_out', ...CONTROLS.leave_batch_out,
+      auc: a, aggregation: 'mean_per_mixed_heldout_batch',
+      nMixedHeldout: summary.nMixedHeldout, nPureHeldout: summary.nPureHeldout,
+      perBatch: summary.perBatch, pooledOofAuc: summary.pooledOofAuc,
+      status: shortcut ? 'shortcut' : 'neutral', finding };
   }
   if (selected.includes('batch_residualized')) {
-    const p = ds.X[0].length, bm = new Map();
-    ds.batch.forEach((b, i) => { const e = bm.get(b) || { c: 0, s: new Float64Array(p) }; e.c++; for (let j = 0; j < p; j++) e.s[j] += ds.X[i][j]; bm.set(b, e); });
-    const Xc = ds.X.map((row, i) => { const e = bm.get(ds.batch[i]); return row.map((v, j) => v - e.s[j] / e.c); });
+    // Restrict the diagnostic to mixed-label batches as before; crucially,
+    // learn every batch mean from the TRAINING fold only, just as feature
+    // selection and LDA are already fitted inside the training fold.
     const keep = ds.batch.map((b, i) => (mixedSet.has(b) ? i : -1)).filter((i) => i >= 0);
-    let a = null;
+    let a = null, unavailable = null;
     if (keep.length >= 10) {
-      const sub = { X: pick(Xc, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
-      a = repeatedCv(sub, modelScorer(sub.X, sub.y, k), { seed: seed + 3 });
+      const sub = { X: pick(ds.X, keep), y: pick(ds.y, keep), batch: pick(ds.batch, keep) };
+      try {
+        a = repeatedCv(sub, batchCenteredScorer(sub, k), { seed: seed + 3 });
+      } catch (error) {
+        if (error?.code !== 'BATCH_NOT_IN_TRAIN') throw error;
+        unavailable = error.batches;
+      }
     }
     const survives = a !== null && a >= 0.65;
-    results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized, auc: a, nUsed: keep.length, status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
-      finding: a === null ? 'Too few samples sit in batches with both labels to test this.' : survives ? `With batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Some signal is independent of batch.`
-        : `With batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Little signal remains once batch is gone.` };
+    const finding = a === null
+      ? unavailable
+        ? 'Train-only batch centering is not identifiable: a held-out fold includes batch '
+          + unavailable.join(', ') + ' absent from its training fold.'
+        : 'Too few samples sit in batches with both labels to test this.'
+      : survives
+        ? `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination survives this fold-local control, but biological causality is not established.`
+        : `With training-fold batch means removed and only mixed batches kept (${keep.length} samples), the score is ${a.toFixed(2)}. Discrimination is weak under this control; this does not establish absence of biological signal.`;
+    results.batch_residualized = { id: 'batch_residualized', ...CONTROLS.batch_residualized,
+      auc: a, nUsed: keep.length, preprocessing: 'training_fold_only',
+      status: a === null ? 'neutral' : survives ? 'signal' : 'shortcut',
+      finding };
   }
   return { n, nBatches: table.length, mixedBatches: [...mixedSet], design: table.map(({ samples, ...t }) => t), results, verdict: verdict(results) };
 }
 
 export function verdict(res) {
-  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut') || (res.within_batch_permutation?.status === 'shortcut');
-  const sigs = [res.within_batch_permutation, res.batch_residualized].filter(Boolean);
-  const signal = sigs.length > 0 && sigs.every((r) => r.status === 'signal');
+  const shortcut = ['batch_only', 'leave_batch_out'].some((id) => res[id]?.status === 'shortcut')
+    || (res.within_batch_permutation?.status === 'shortcut');
+  // One favorable control is useful evidence, not independent corroboration:
+  // absolute residualized AUC alone is not a permutation-test p-value, and
+  // permutation significance alone does not verify a corrected batch pathway.
+  const permutationSignal = res.within_batch_permutation?.status === 'signal';
+  const residualSignal = res.batch_residualized?.status === 'signal';
+  const signal = permutationSignal && residualSignal;
+  const partialSignal = permutationSignal || residualSignal;
   const ran = Object.keys(res).length > 1;
   if (!ran) return { id: 'unrun', label: 'No controls run', text: 'Select at least one control.' };
-  if (shortcut && !signal) return { id: 'shortcut', label: 'Mostly shortcut', text: 'The headline score is explained by batch structure. The controls found no evidence of a within-batch signal.' };
-  if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Part of the score is real within-batch signal; part is batch structure. Report the controlled number, not the naive one.' };
-  if (signal) return { id: 'signal', label: 'Signal holds up', text: 'The score exceeds every batch-preserving control that was run.' };
-  return { id: 'open', label: 'Inconclusive', text: 'No control flagged a shortcut and none showed signal beyond the null. Add controls or samples.' };
+  if (shortcut && !signal) return { id: 'shortcut', label: 'Mostly shortcut', text: partialSignal
+    ? 'A shortcut was detected. One within-batch signal control is favorable, but the independent second control has not corroborated it.'
+    : 'The headline score is explained by batch structure. The controls found no corroborated within-batch signal.' };
+  if (shortcut && signal) return { id: 'both', label: 'Signal plus shortcut', text: 'Both independent within-batch signal controls are favorable, while batch structure also explains part of the headline score. Report the controlled number, not the naive one.' };
+  if (signal) return { id: 'signal', label: 'Signal holds up', text: 'Both the batch-preserving permutation null and train-fold-only batch centering support within-batch discrimination. This is evidence, not proof of biological causality.' };
+  if (partialSignal) return { id: 'open', label: 'Incomplete evidence', text: 'Only one signal control is favorable; both the batch-preserving permutation null and training-fold batch centering must support a result before calling it robust.' };
+  return { id: 'open', label: 'Inconclusive', text: 'No control flagged a shortcut and none showed corroborated signal beyond the null. Add controls or samples.' };
 }
 
 export function toMarkdown(name, run, narrative) {
@@ -204,6 +313,6 @@ export function toMarkdown(name, run, narrative) {
   L.push('', '## Findings');
   for (const r of Object.values(run.results)) if (r.finding) L.push(`- ${r.title}: ${r.finding}`);
   if (narrative) L.push('', '## Nemotron explanation (figures checked against the table above)', '', narrative);
-  L.push('', '## Corrected evaluation candidate', '', 'Report leave-one-batch-out AUC and the batch-centered mixed-batch AUC next to the batch-only baseline. Treat only the amount above the within-batch permutation null as evidence of learned signal.');
+  L.push('', '## Corrected evaluation candidate', '', 'Report mean per-mixed-heldout-batch AUC (pure-label heldouts excluded; at least two mixed groups needed) and training-fold-only batch-centered AUC next to the batch-only baseline. Scores pooled across separately fitted heldout-batch models are only diagnostic, not cross-batch discrimination evidence. Treat only the amount above the within-batch permutation null as tentative evidence of learned signal.');
   return L.join('\n') + '\n';
 }
