@@ -33,7 +33,7 @@ colnames(csv) <- c("sample_id","batch","label",paste0("probe",picks))
 output <- Sys.getenv("NULLGARDEN_REAL_CSV")
 if (!nzchar(output)) stop("NULLGARDEN_REAL_CSV destination is required")
 write.table(csv,file=output,sep=",",row.names=FALSE,col.names=TRUE,
-            quote=FALSE,na="",digits=16)
+            quote=FALSE,na="")
 cat("source_package=bladderbatch_1.50.0 (Bioconductor 3.23)\n")
 cat("expression_provenance=original RMA-normalized bladderEset assays\n")
 cat("n_rows=",nrow(csv)," n_probes=",length(picks),
