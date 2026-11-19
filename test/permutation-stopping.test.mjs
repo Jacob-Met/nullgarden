@@ -32,12 +32,19 @@ test('early decisions are identical to all possible unseen suffixes (exact oracl
 });
 
 test('the production conditional null uses a valid conservative anytime upper p bound', () => {
+  const observations = [];
   for (const id of ['shortcut_only', 'shortcut_and_signal', 'balanced']) {
     const ds = SCENARIOS[id].make();
     const args = {seed:20261030, perms:40, k:20};
+    const beforeFull = process.hrtime.bigint();
     const full = runControls(ds,['within_batch_permutation'],args).results.within_batch_permutation;
+    const elapsedFullMs = Number(process.hrtime.bigint() - beforeFull) / 1e6;
+    const beforeStopped = process.hrtime.bigint();
     const stopped = runControls(ds,['within_batch_permutation'],
       {...args, stopping:'decision'}).results.within_batch_permutation;
+    const elapsedStoppedMs = Number(process.hrtime.bigint() - beforeStopped) / 1e6;
+    observations.push({scenario:id,planned:40,executed:stopped.permsRun,
+      fullMs:+elapsedFullMs.toFixed(3),stoppedMs:+elapsedStoppedMs.toFixed(3)});
     assert.equal(stopped.status,full.status,id + ' fixed-horizon decision changed');
     assert.ok(stopped.permsRun > 0 && stopped.permsRun <= 40);
     assert.equal(stopped.permsBudget,40);
@@ -50,6 +57,7 @@ test('the production conditional null uses a valid conservative anytime upper p 
       assert.equal(stopped.nullLo,undefined);
     }
   }
+  console.log('FROZEN_ANYTIME_DECISION_RECEIVING=' + JSON.stringify(observations));
   const shortcut = runControls(SCENARIOS.shortcut_only.make(),
     ['within_batch_permutation'], {seed:20261030,perms:40,stopping:'decision'});
   assert.ok(shortcut.results.within_batch_permutation.permsRun < 40,
