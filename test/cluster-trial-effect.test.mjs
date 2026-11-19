@@ -165,6 +165,11 @@ test('HTTP intake locks primary outcome with digest; separate result and report 
     return {code:response.status,data:accept==='text'?await response.text():await response.json()};
   };
   try{
+    const index=await(await fetch(root+'/')).text();
+    const app=await(await fetch(root+'/app.js')).text();
+    assert.match(index,/id="trialOutcome"/);
+    assert.match(index,/id="trialEffect"/);
+    assert.match(app,/\\/api\\/trial-outcome/);
     const ds=trial();
     const input={csv:csv(ds),randomization:ds.randomization,trialOutcome:ds.trialOutcome,
       family:{ks:[1,2],seed:31,perms:40}};
