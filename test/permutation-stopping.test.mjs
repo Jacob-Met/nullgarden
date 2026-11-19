@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { permutationDecisionBounds, runControls, toMarkdown } from '../src/core.mjs';
 import { SCENARIOS } from '../src/data.mjs';
 import { makeServer } from '../server.mjs';
+import { checkFigures, explainPrompt } from '../src/llm.mjs';
 
 // Exhaust every possible exceedance stream: stopping after a prefix must
 // NEVER change the decision of the prespecified completed-B permutation test.
@@ -75,4 +76,20 @@ test('cold HTTP run and report use decision stopping with honest bounded inferen
       {datasetId:data.datasetId,controls:['within_batch_permutation']})).text();
     assert.match(md,/conservative|p-value bound/i);
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+test('LLM explanation and figure grounding accept early bounds without inventing a null mean', () => {
+  const run = runControls(SCENARIOS.shortcut_only.make(),
+    ['within_batch_permutation'], {seed:20261030,perms:40,stopping:'decision'});
+  const p = run.results.within_batch_permutation;
+  assert.equal(p.pExact,false);
+  assert.equal(p.nullMean,null);
+  const prompt = explainPrompt(run)[1].content;
+  assert.match(prompt,/conservative upper bound/);
+  assert.doesNotMatch(prompt,/null_mean=NaN/);
+  const reported = p.pLower.toFixed(3) + ' to ' + p.pUpper.toFixed(3);
+  const validation = checkFigures(reported,run);
+  assert.equal(validation.total,2);
+  assert.equal(validation.matched,2);
+  assert.deepEqual(validation.unmatched,[]);
 });
