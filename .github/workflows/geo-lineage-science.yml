@@ -1,0 +1,20 @@
+name: NULLGARDEN GEO parent-series lineage receiving
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'research/gse3167-origin-metadata.mjs'
+      - '.github/workflows/geo-lineage-science.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  series-lineage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stream, authenticate and inspect primary 60-array GEO metadata
+        run: node research/gse3167-origin-metadata.mjs
