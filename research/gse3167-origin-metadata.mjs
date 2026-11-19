@@ -90,4 +90,8 @@ const output={
   inference:'GSM accession identifies an assay, not an independent biological donor; no subject-level permutation validity may be inferred from accession uniqueness',
   records
 };
+if(!output.sourceExplicitlyProvesRepeatedDonors)
+  throw new Error('Pinned primary study did not verify biologically dependent biopsies; recheck GEO series narrative');
+if(output.metadataContainsVerifiableSubjectMapping)
+  throw new Error('Public metadata now expose subject labels; audit and install actual blocked mapping before issuing scientific conclusions');
 console.log('GEO_ORIGIN_AUDIT='+JSON.stringify(output));
