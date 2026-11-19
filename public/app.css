@@ -49,6 +49,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:none;margin:0 0
 .verdict.shortcut{border-color:var(--amber)} .verdict.both{border-color:var(--amber)} .verdict.signal{border-color:var(--lime)}
 .ladder{position:relative;margin:8px 0 6px;--naive:.8}
 .ladder::after{content:"";position:absolute;top:0;bottom:0;left:calc(190px + (100% - 190px - 60px) * var(--naive-pos));border-left:1px dashed var(--amber);pointer-events:none}
+.ladder.no-baseline::after{content:none}
 .row{display:grid;grid-template-columns:190px 1fr 60px;align-items:center;gap:0;padding:11px 0;border-bottom:1px solid var(--line)}
 .row .nm{font-size:13px;padding-right:12px}
 .trk{position:relative;height:18px;background:linear-gradient(90deg,transparent calc(var(--half) - 1px),var(--line) calc(var(--half) - 1px),var(--line) var(--half),transparent var(--half))}
