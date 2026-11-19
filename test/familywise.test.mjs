@@ -135,7 +135,9 @@ test('registered family retains independently witnessed subject-level positive s
     ds.X.push(row);
   }
   const result=runFamilywiseK(ds,{ks:[1,25],seed:20261030,perms:199,stopping:'decision'});
-  console.log('FAMILY_POSITIVE_ORIGINAL='+JSON.stringify({tests:result.tests,status:result.status}));
+  console.log('FROZEN_FAMILY_POSITIVE_RECEIVING='+JSON.stringify({tests:result.tests,status:result.status,refinement:result.sequentialRefinement}));
+  assert.equal(result.sequentialRefinement,'completed_censored_suffix_for_holm',
+    'The marginal .05 stopping boundary cannot certify Holm at .05 for a two-test family');
   assert.equal(result.status,'valid');
   assert.equal(result.tests.length,2);
   for(const t of result.tests){
@@ -143,5 +145,41 @@ test('registered family retains independently witnessed subject-level positive s
     assert.ok(t.adjustedP<=0.05,'familywise adjusted signal must remain detectable');
     assert.equal(t.decision,'reject');
     assert.equal(t.nullSampling,'batch_conditional_fixed_statistic');
+  }
+});
+
+test('familywise pathwise early stopping and complete-budget decisions agree on changed scientific inputs',()=>{
+  const scenarios = [
+    {name:'shortcut_null',signal:0},
+    {name:'transfer_signal',signal:3.5},
+  ];
+  for(const scenario of scenarios){
+    const ds={ids:[],subject:[],batch:[],y:[],X:[],features:['f1','f2','f3']};
+    for(let u=0;u<24;u++)for(let rep=0;rep<2;rep++){
+      const y=u%2;
+      ds.ids.push('s'+u+'-'+rep);
+      ds.subject.push('s'+u);
+      ds.batch.push('B'+Math.floor(u/4));
+      ds.y.push(y);
+      ds.X.push([
+        Math.sin(u*1.73)+Math.sin(rep)*0.002,
+        Math.cos(u*0.81)+scenario.signal*(y?1:-1),
+        Math.sin(u*0.43)+scenario.signal*(y?0.5:-0.5),
+      ]);
+    }
+    for(const seed of [17,20261030]){
+      const spec={ks:[1,3],seed,perms:45};
+      const fixed=runFamilywiseK(ds,{...spec,stopping:'fixed'});
+      const sequential=runFamilywiseK(ds,{...spec,stopping:'decision'});
+      assert.equal(sequential.status,fixed.status,scenario.name);
+      assert.deepEqual(sequential.tests.map(t=>t.decision),
+        fixed.tests.map(t=>t.decision),scenario.name+' seed '+seed);
+      for(let i=0;i<spec.ks.length;i++){
+        assert.ok(sequential.tests[i].adjustedP>=fixed.tests[i].adjustedP-1e-12,
+          'Unseen suffix bound may only make adjusted p conservative');
+        assert.ok(sequential.tests[i].preliminaryPermutationsRun<=
+          sequential.tests[i].permutationsRun);
+      }
+    }
   }
 });
