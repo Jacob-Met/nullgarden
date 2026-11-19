@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auc, unitAuc, repeatedCv, runControls, stratifiedUnitFolds } from '../src/core.mjs';
+import { auc, unitAuc, fitScore, repeatedCv, runControls, stratifiedUnitFolds } from '../src/core.mjs';
 import { parseCsv } from '../src/data.mjs';
 import { makeServer } from '../server.mjs';
 
@@ -108,4 +108,40 @@ test('measured donor memorization collapses when independent units cannot leak b
   assert.equal(donorSplit,0.5,
     'completely unseen donors cannot be learned from an ID memorization rule');
   console.log('FROZEN_DONOR_LEAK_RECEIVING='+JSON.stringify({rowSplitAuc:rowSplit,donorSplitAuc:donorSplit,n:ds.y.length,independentUnits:12}));
+});
+
+test('independent complete-unit conditional oracle agrees with production exact p across all 64 allocations',()=>{
+  // Twelve donors in six batches, two technical repeats per donor. The
+  // independent oracle flips BOTH donor labels per batch as one of 2^6 masks;
+  // neither production orbit enumerator nor unitPermutationDesign is called.
+  const statistic=(labels)=>repeatedCv({...ds,y:labels},
+    (train,test)=>fitScore(train.map(i=>ds.X[i]),
+      train.map(i=>labels[i]),test.map(i=>ds.X[i]),2),
+    {seed:20261030,repeats:3,folds:5});
+  const observed=statistic(ds.y);
+  assert.ok(Number.isFinite(observed));
+  const nulls=[];
+  for(let mask=0;mask<64;mask++){
+    const labels=ds.y.map((_,i)=>{
+      const batch=Math.floor(i/4);
+      const donorClass=Math.floor(i/2)%2;
+      return ((mask>>batch)&1) ? donorClass : 1-donorClass;
+    });
+    assert.ok(labels.every((label,i)=>label===labels[i-(i%2)]),
+      'both measurements of each donor must retain one label');
+    const score=statistic(labels);
+    assert.ok(Number.isFinite(score));
+    nulls.push(score);
+  }
+  const pExact=nulls.filter(v=>v>=observed).length/64;
+  const result=runControls(ds,['within_batch_permutation'],
+    {seed:20261030,perms:100,k:2,stopping:'decision'}).results.within_batch_permutation;
+  assert.equal(result.p,pExact);
+  assert.equal(result.pExact,true);
+  assert.equal(result.permutationUnit,'unit');
+  assert.equal(result.orbitSize,64);
+  assert.ok(result.p>=1/64,'observed donor allocation must occur in exact orbit');
+  console.log('FROZEN_GROUPED_EXACT_RECEIVING='+JSON.stringify({
+    units:12,measurements:24,permutations:64,observedAuc:observed,
+    exactP:pExact}));
 });
