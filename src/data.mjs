@@ -1,4 +1,5 @@
 import { rng } from './core.mjs';
+import { unitGroups } from './units.mjs';
 
 // Batch/label counts are the real bladderbatch design recorded in
 // components/batch-confounding/examples/bladderbatch (57 samples, 5 batches).
@@ -35,18 +36,29 @@ export function parseCsv(text, { maxRows = 2000, maxCols = 2000 } = {}) {
   if (lines.length < 11) throw new Error('Need a header and at least 10 samples.');
   if (lines.length - 1 > maxRows) throw new Error(`At most ${maxRows} samples.`);
   const head = lines[0].split(',').map((s) => s.trim());
-  if (head.length < 4 || head.length > maxCols + 3) throw new Error('Columns must be: sample_id, batch, label, then at least one numeric feature.');
-  const ids = [], batch = [], y = [], X = [];
+  const hasUnit = ['unit_id', 'subject_id', 'donor_id'].includes(head[3]?.toLowerCase());
+  const featureStart = hasUnit ? 4 : 3;
+  if (head.length < featureStart + 1 || head.length > maxCols + featureStart) {
+    throw new Error('Columns must be: sample_id, batch, label, optional unit_id, then at least one numeric feature.');
+  }
+  const ids = [], batch = [], y = [], X = [], unit = [];
   lines.slice(1).forEach((l, i) => {
     const c = l.split(',').map((s) => s.trim());
     if (c.length !== head.length) throw new Error(`Row ${i + 2} has ${c.length} fields, expected ${head.length}.`);
     if (c[2] !== '0' && c[2] !== '1') throw new Error(`Row ${i + 2}: label must be 0 or 1.`);
-    const row = c.slice(3).map(Number);
+    const row = c.slice(featureStart).map(Number);
+    if (hasUnit && !c[3]) throw new Error(`Row ${i + 2}: unit_id is empty.`);
+    if (hasUnit) unit.push(c[3]);
     if (row.some((v) => !Number.isFinite(v))) throw new Error(`Row ${i + 2}: features must be finite numbers.`);
     if (!c[1]) throw new Error(`Row ${i + 2}: batch is empty.`);
     ids.push(c[0]); batch.push(c[1]); y.push(Number(c[2])); X.push(row);
   });
   if (new Set(ids).size !== ids.length) throw new Error('sample_id values must be unique.');
   if (!y.includes(0) || !y.includes(1)) throw new Error('Need both labels.');
-  return { ids, batch, y, X, features: head.slice(3) };
+  const ds = { ids, batch, y, X, features: head.slice(featureStart) };
+  if (hasUnit) {
+    ds.unit = unit;
+    unitGroups(ds); // fail closed: a unit has one label and lives in one batch
+  }
+  return ds;
 }
