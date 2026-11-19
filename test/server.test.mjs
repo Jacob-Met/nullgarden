@@ -46,6 +46,6 @@ test('served results and markdown disclose the fold-local and mixed-heldout supp
     const md = await (await post(base, '/api/report', payload)).text();
     assert.match(md, /training-fold-only batch-centered AUC/);
     assert.match(md, /pure-label heldouts excluded/);
-    assert.match(md, /mean within-mixed-batch AUC/);
+    assert.match(md, /mean within-mixed-batch AUC/i);
   });
 });
