@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, dirname, extname } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
-import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits } from './src/core.mjs';
+import { runControls, CONTROLS, designTable, toMarkdown, conditionalUnits, conditionalClusters } from './src/core.mjs';
 import { SCENARIOS, parseCsv } from './src/data.mjs';
 import { runFamilywiseK, planFamilywiseK } from './src/familywise.mjs';
 import { chat, extractJson, proposePrompt, validateProposal, explainPrompt, checkFigures, MODEL } from './src/llm.mjs';
@@ -21,7 +21,7 @@ function remember(name, ds, proposal) {
   }
   const registrationDigest=createHash('sha256').update(JSON.stringify({
     schema:'nullgarden.family-intake.v1',
-    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,y:ds.y,X:ds.X,features:ds.features},
+    data:{ids:ds.ids,batch:ds.batch,subject:ds.subject??null,cluster:ds.cluster??null,y:ds.y,X:ds.X,features:ds.features},
     family
   })).digest('hex');
   const id=randomUUID();
@@ -32,8 +32,10 @@ function remember(name, ds, proposal) {
 function describe(id) {
   const { name, ds, family, registrationDigest } = store.get(id);
   const units = conditionalUnits(ds.batch, ds.y, ds.subject ?? null);
+  const clusters=ds.cluster?conditionalClusters(ds.batch,ds.y,ds.subject,ds.cluster):null;
   return { datasetId: id, name, n: ds.y.length, nSubjects: units.length,
     subjectMode: ds.subject ? 'declared_subject_blocks' : 'assumed_independent_rows',
+    ...(clusters?{nClusters:clusters.length,nestedClusterMode:'cluster_disjoint_within_cluster_permutation'}:{}),
     features: ds.features.length, design: designTable(ds), model: MODEL,
     familyRegistration: {lockedAt:'dataset_intake',sha256:registrationDigest,...family} };
 }
