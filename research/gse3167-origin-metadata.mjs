@@ -18,7 +18,7 @@ const rl=createInterface({
   input:Readable.fromWeb(resp.body).pipe(tee).pipe(createGunzip()),
   crlfDelay:Infinity
 });
-const fields=new Map();
+const fields=new Map(),seriesFields=new Map();
 function unquote(s){
   let v=s.trim();if(v.length>=2&&v[0]==='"'&&v[v.length-1]==='"')v=v.slice(1,-1).replaceAll('""','"');
   return v.trim();
@@ -28,6 +28,12 @@ for await (const line of rl) {
   if(line.startsWith('!series_matrix_table_begin')){inMatrix=true;continue;}
   if(inMatrix){tableRows++;continue;}
   headerLineCount++;
+  if(line.startsWith('!Series_')){
+    const cols=line.split('\t');if(cols.length<2)continue;
+    const key=cols[0].trim(), values=cols.slice(1).map(unquote);
+    if(!seriesFields.has(key))seriesFields.set(key,[]);
+    seriesFields.get(key).push(...values);
+  }
   if(line.startsWith('!Sample_')){
     const cols=line.split('\t');if(cols.length<2)continue;
     const key=cols[0].trim();
@@ -61,14 +67,26 @@ for(const record of records){
       idsFound.push({gsm:record.gsm,key:field.slice(0,idx).trim(),publicSubjectCode:field.slice(idx+1).trim()});
   }
 }
+const seriesSummary=(seriesFields.get('!Series_summary')||[]).join(' ');
+const seriesDesign=(seriesFields.get('!Series_overall_design')||[]).join(' ');
+const seriesDescription=(seriesFields.get('!Series_description')||[]).join(' ');
+const compressedSha256=hash.digest('hex');
+const knownSourceSha='1aca6001faa77d5dcb5c6aae454fded1f4f0e2300b7273604016ca97b6131bd9';
+if(compressedSha256!==knownSourceSha)
+  throw new Error('Primary GEO study source hash changed; frozen reference '+knownSourceSha
+    +' observed '+compressedSha256+'. Reverify source revision and sample linkage.');
 const output={
   schema:'nullgarden.geo-GSE3167-public-metadata.v1',source,
-  compressedSha256:hash.digest('hex'),compressedBytes,linesCount,headerLineCount,
+  compressedSha256,compressedBytes,linesCount,headerLineCount,
   dataMatrixRowsReadWithoutStoring:tableRows,
   numberOfGsmSamples:records.length,
   presentHeaderKeys:[...fields.keys()].sort(),
   explicitSubjectCodeCount:idsFound.length,explicitSubjectCodes:idsFound,
-  parentStudyDescription:'GSE3167 public summary states some histologically normal and CIS biopsies came from the same urinary bladder',
+  sourceSeriesSummary:seriesSummary,sourceSeriesDesign:seriesDesign,
+  sourceSeriesDescription:seriesDescription,
+  sourceExplicitlyProvesRepeatedDonors:/same (urinary )?bladder|same patient|same subject|paired|multiple biopsies/i.test(
+    [seriesSummary,seriesDesign,seriesDescription].join(' ')),
+  metadataContainsVerifiableSubjectMapping:idsFound.length===access.length,
   inference:'GSM accession identifies an assay, not an independent biological donor; no subject-level permutation validity may be inferred from accession uniqueness',
   records
 };
